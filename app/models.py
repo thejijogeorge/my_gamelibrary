@@ -126,6 +126,8 @@ class GfnGame(db.Model):
     available_on_epic = db.Column(db.Boolean, default=False)
     available_on_gog = db.Column(db.Boolean, default=False)
     gfn_deeplink_url = db.Column(db.String(500), nullable=True)
+    gfn_game_id = db.Column(db.String(36), nullable=True)
+    gfn_url = db.Column(db.String(255), nullable=True)
     added_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     game = db.relationship("GameMaster")

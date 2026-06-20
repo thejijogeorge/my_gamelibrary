@@ -12,3 +12,5 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-key-change-in-production")
+    UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "/tmp/gamelibrary-uploads")
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max upload

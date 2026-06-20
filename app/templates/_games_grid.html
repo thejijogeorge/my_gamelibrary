@@ -4,12 +4,13 @@
         <div class="group relative rounded-lg overflow-hidden backdrop-blur-lg bg-gradient-to-br from-gray-800/40 to-gray-900/40 border border-cyan-500/20 hover:border-cyan-400/60 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
             
             <!-- Cover Image -->
-            <div class="relative h-48 bg-gradient-to-b from-gray-700 to-gray-900 overflow-hidden">
+            <div class="relative h-64 bg-gradient-to-b from-gray-700 to-gray-900 overflow-hidden">
                 {% if game.cover_url %}
                     <img 
                         src="{{ game.cover_url }}" 
                         alt="{{ game.title }}"
-                        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                        loading="lazy"
                     />
                 {% else %}
                     <div class="w-full h-full flex items-center justify-center text-gray-600 text-4xl">
@@ -53,17 +54,17 @@
                 
                 <!-- Actions -->
                 <div class="mt-4 pt-4 border-t border-cyan-500/20 flex gap-2">
-                    {% if game.is_on_gfn and game.gfn_deeplink_url %}
+                    {% if game.is_on_gfn %}
                     <a 
-                        href="{{ game.gfn_deeplink_url }}" 
+                        href="{{ game.gfn_deeplink_url or 'https://play.geforcenow.com/mall/#/layout/games' }}" 
                         target="_blank"
                         class="flex-1 px-3 py-2 rounded-lg text-xs font-semibold bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white text-center transition-all hover:shadow-lg hover:shadow-green-500/50"
                     >
-                        Launch on GFN
+                        ☁️ Launch on GFN
                     </a>
                     {% endif %}
                     <button 
-                        class="flex-1 px-3 py-2 rounded-lg text-xs font-semibold bg-gray-800 hover:bg-gray-700 text-gray-300 border border-cyan-500/20 hover:border-cyan-400 transition"
+                        class="{% if game.is_on_gfn %}flex-shrink-0 w-16{% else %}flex-1{% endif %} px-3 py-2 rounded-lg text-xs font-semibold bg-gray-800 hover:bg-gray-700 text-gray-300 border border-cyan-500/20 hover:border-cyan-400 transition"
                         onclick="alert('More details coming soon!')"
                     >
                         Info

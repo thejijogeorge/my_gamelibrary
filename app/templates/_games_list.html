@@ -58,13 +58,13 @@
                     </td>
                     <td class="px-6 py-4 text-right">
                         <div class="flex gap-2 justify-end">
-                            {% if game.is_on_gfn and game.gfn_deeplink_url %}
+                            {% if game.is_on_gfn %}
                             <a 
-                                href="{{ game.gfn_deeplink_url }}" 
+                                href="{{ game.gfn_deeplink_url or 'https://play.geforcenow.com/mall/#/layout/games' }}" 
                                 target="_blank"
                                 class="px-3 py-1 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors"
                             >
-                                Launch
+                                ☁️ Launch
                             </a>
                             {% endif %}
                             <button 

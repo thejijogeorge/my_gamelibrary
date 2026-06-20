@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+import os
 
 from config import Config
 
@@ -12,6 +13,9 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # Ensure upload folder exists
+    os.makedirs(app.config.get("UPLOAD_FOLDER", "/tmp/gamelibrary-uploads"), exist_ok=True)
+
     db.init_app(app)
     migrate.init_app(app, db)
 
@@ -20,5 +24,8 @@ def create_app(config_class=Config):
 
     from app.routes.games import games_bp
     app.register_blueprint(games_bp)
+
+    from app.routes.admin import admin_bp
+    app.register_blueprint(admin_bp)
 
     return app

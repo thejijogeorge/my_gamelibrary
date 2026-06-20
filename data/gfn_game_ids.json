@@ -1,0 +1,8 @@
+{
+  "_comment": "GeForce NOW Game ID Database - Real UUIDs only!",
+  "_instructions": "Add REAL game IDs found from the GFN web app (play.geforcenow.com). Open a game, copy the UUID from the browser URL.",
+  "_url_format": "https://play.geforcenow.com/games?game-id=UUID",
+  "_how_to_find": "1. Go to play.geforcenow.com  2. Find a game  3. Click it  4. Copy the game-id= UUID from the URL bar",
+
+  "Cuphead": "44a455e6-b60e-4016-b62a-d0c13052c8c2"
+}
