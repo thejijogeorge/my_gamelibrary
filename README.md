@@ -23,7 +23,6 @@ cd ~/my_gamelibrary
 Copy these files to the directory:
 - `docker-compose.deploy.yml` → rename to `docker-compose.yml`
 - `.env.example` → rename to `.env` and fill in credentials
-- `Epic_Games_Library Final.xlsx` (your game export)
 
 ### **Step 2: Configure Environment**
 
@@ -54,35 +53,76 @@ sudo docker compose ps
 
 Both containers should show `Up` status. ✅
 
-### **Step 4: Import Your Games**
+### **Step 4: Import Games & Fetch Covers (via Web UI)**
 
-```bash
-sudo docker compose exec web python scripts/import_games_from_excel.py "Epic_Games_Library Final.xlsx"
-```
-
-You should see:
-```
-✅ Steam games imported: 408
-✅ Epic games imported: 333
-✅ GOG games imported: 93
-```
-
-### **Step 5: Fetch Cover Art**
-
-```bash
-sudo docker compose exec web python scripts/fetch_igdb_metadata.py
-```
-
-Sits back and watch it fetch beautiful game covers! ☕
-
-### **Step 6: Access Your Library**
-
-Open browser:
+Open your browser:
 ```
 http://your-server-ip:5000
 ```
 
-You should see your games with covers, filters, and GFN streaming buttons! 🎮
+1. Click the **⚙️ Admin** button in the top-right
+2. **Upload your Excel file** under "📤 Import Games"
+3. Click **"Fetch Missing Covers"** under "🖼️ Cover Art"
+4. Click **"Populate GFN URLs"** under "☁️ GeForce NOW"
+
+All tasks run in the background — status updates appear in real-time! 🎮
+
+---
+
+## 📊 Features
+
+### **Core**
+- ✅ Multi-platform game aggregator — Steam, Epic Games, GOG
+- ✅ Beautiful cover art — High-resolution (t_1080p) from IGDB
+- ✅ Real-time filtering — Search, filter by platform/account
+- ✅ Grid & list views — Choose your preferred layout
+- ✅ Responsive design — Works on mobile & desktop
+- ✅ Dark gamer theme — Glassmorphism UI with neon accents
+
+### **Admin Panel (⚙️)**
+- ✅ Upload Excel via browser — No more manual CLI imports
+- ✅ One-click cover art fetch — Pulls covers from IGDB automatically
+- ✅ GFN URL population — Sets launch URLs for all GFN-available games
+- ✅ GFN UUID assignment — Search any game and paste its real GFN deep link UUID
+
+### **GeForce NOW Integration (☁️)**
+- ✅ Launch on GFN buttons — Every GFN-available game has a launch button
+- ✅ Direct deep links — Games with assigned UUIDs launch directly into GFN
+- ✅ Fallback support — Games without UUIDs open the GFN web app
+
+---
+
+## ⚙️ Admin Panel Guide
+
+Click the **⚙️ Admin** button in the header to open the management panel.
+
+### **📤 Import Games**
+
+Upload your game library Excel file (`.xlsx`) directly from the browser. The import script runs in the background and shows progress in real-time.
+
+### **🖼️ Cover Art**
+
+Click "Fetch Missing Covers" to pull high-res game covers from IGDB for any games without cover art. Requires IGDB credentials in `.env`.
+
+### **☁️ GeForce NOW URLs**
+
+Click "Populate GFN URLs" to set launch URLs for all games in the GFN catalog. Games get a fallback URL to the GFN web app by default.
+
+### **🎯 Assign GFN Deep Links**
+
+For direct game launching on GeForce NOW:
+
+1. Go to [play.geforcenow.com](https://play.geforcenow.com)
+2. Find a game and click it
+3. Copy the `game-id` UUID from the browser URL bar
+   ```
+   Example URL: https://play.geforcenow.com/games?game-id=81810b31-1b34-4921-8ab3-c6c3485fe4ce
+   Copy this:    81810b31-1b34-4921-8ab3-c6c3485fe4ce
+   ```
+4. In the admin panel, search for the game under "Assign GFN Deep Link"
+5. Paste the UUID and click **Save**
+
+The game's "Launch on GFN" button will now open it directly in GeForce NOW! 🚀
 
 ---
 
@@ -92,19 +132,29 @@ You should see your games with covers, filters, and GFN streaming buttons! 🎮
 my_gamelibrary/
 ├── docker-compose.yml          ← Rename from docker-compose.deploy.yml
 ├── .env                        ← Your credentials & secrets
-├── Epic_Games_Library Final.xlsx ← Your game library
 ├── app/
+│   ├── __init__.py             ← App factory with admin blueprint
+│   ├── models.py               ← Database models (GfnGame has gfn_game_id + gfn_url)
 │   ├── routes/
+│   │   ├── games.py            ← Game display & filtering routes
+│   │   └── admin.py            ← Admin panel routes (upload, covers, GFN)
 │   ├── templates/
-│   ├── static/css/
-│   └── models.py
+│   │   ├── index.html          ← Main page with admin panel
+│   │   ├── _games_grid.html    ← Grid view partial
+│   │   └── _games_list.html    ← List view partial
+│   └── static/css/style.css    ← Gamer theme
 ├── scripts/
-│   ├── import_games_from_excel.py
-│   ├── fetch_igdb_metadata.py
-│   ├── clear_cover_urls.py
-│   └── deduplicate_games.py
-├── migrations/                 ← Database schema
+│   ├── import_games_from_excel.py    ← Import from Excel
+│   ├── fetch_igdb_metadata.py        ← Fetch covers from IGDB
+│   ├── populate_gfn_game_ids.py      ← Set GFN launch URLs
+│   ├── deduplicate_games.py          ← Remove duplicate entries
+│   └── clear_cover_urls.py           ← Clear covers for re-fetch
+├── data/
+│   └── gfn_game_ids.json             ← Community GFN UUID database
+├── migrations/                        ← Database schema & updates
 ├── Dockerfile
+├── config.py
+├── wsgi.py
 └── requirements.txt
 ```
 
@@ -128,15 +178,15 @@ sudo docker compose exec db psql -U gameapp -d gamelibrary \
   -c "SELECT COUNT(*) FROM vw_owned_games_unified;"
 ```
 
-### **Clear Blurry Covers & Re-fetch**
+### **Remove Duplicate Games**
+```bash
+sudo docker compose exec web python scripts/deduplicate_games.py --yes
+```
+
+### **Clear & Re-fetch Covers**
 ```bash
 sudo docker compose exec web python scripts/clear_cover_urls.py
 sudo docker compose exec web python scripts/fetch_igdb_metadata.py
-```
-
-### **Remove Duplicate Games**
-```bash
-sudo docker compose exec -it web python scripts/deduplicate_games.py
 ```
 
 ### **Stop the App**
@@ -207,39 +257,21 @@ Your IGDB credentials are wrong or expired:
 
 This is normal for niche/indie games. IGDB doesn't have everything. Popular AAA games should have covers.
 
+### **Admin panel tasks stuck on "running"**
+
+Tasks have a 10-minute timeout. If stuck:
+1. Check logs: `sudo docker compose logs web`
+2. Restart: `sudo docker compose restart web`
+
 ### **Database stuck or corrupted**
 
 Nuke and restart:
 ```bash
 sudo docker compose down -v
 sudo docker compose up -d
-# Re-import games
-sudo docker compose exec web python scripts/import_games_from_excel.py "Epic_Games_Library Final.xlsx"
 ```
 
-### **Performance issues**
-
-Increase Docker memory:
-```yaml
-# docker-compose.yml
-services:
-  web:
-    mem_limit: 2g
-  db:
-    mem_limit: 1g
-```
-
----
-
-## 📊 Features
-
-✅ **Multi-platform game aggregator** — Steam, Epic Games, GOG  
-✅ **Beautiful cover art** — High-resolution (t_1080p) from IGDB  
-✅ **Real-time filtering** — Search, filter by platform/account  
-✅ **GeForce NOW integration** — One-click cloud gaming launch  
-✅ **Grid & list views** — Choose your preferred layout  
-✅ **Responsive design** — Works on mobile & desktop  
-✅ **Dark gamer theme** — Beautiful glassmorphism UI  
+Then re-import via the Admin panel.
 
 ---
 
@@ -260,36 +292,25 @@ sudo docker compose up -d
 
 ---
 
-## 📝 Next Steps
+## 🏗️ Build & Push (For Developers)
 
-- Customize the UI theme in `app/static/css/style.css`
-- Add more platforms by modifying `app/models.py` and import scripts
-- Set up Nginx reverse proxy for production HTTPS
-- Configure automatic daily backups
+```bash
+# Build with dual tags
+docker build -t thejijogeorge/gamelibrary-web:latest -t thejijogeorge/gamelibrary-web:2.0.0 .
 
----
-
-## 💬 Support
-
-For issues or questions, check:
-- Docker logs: `sudo docker compose logs web`
-- Database status: `sudo docker compose ps`
-- Game count: `sudo docker compose exec db psql -U gameapp -d gamelibrary -c "SELECT COUNT(*) FROM vw_owned_games_unified;"`
+# Push to Docker Hub
+docker push thejijogeorge/gamelibrary-web:latest
+docker push thejijogeorge/gamelibrary-web:2.0.0
+```
 
 ---
 
-## 📄 Files Explained
+## 📝 Version History
 
-| File | Purpose |
-|------|---------|
-| `docker-compose.yml` | Container orchestration — defines web & database services |
-| `.env` | Environment variables — IGDB credentials, secrets |
-| `Dockerfile` | Web app container definition |
-| `app/routes/games.py` | Flask routes for filtering & displaying games |
-| `app/templates/` | HTML templates for UI |
-| `scripts/import_games_from_excel.py` | Import games from Excel file |
-| `scripts/fetch_igdb_metadata.py` | Fetch game covers & metadata from IGDB |
-| `migrations/` | Database schema & updates |
+| Version | Features |
+|---------|----------|
+| **2.0.0** | Admin panel, Excel upload via UI, cover art button, GFN UUID assignment, GFN launch buttons |
+| **1.0.0** | Initial release — game import, IGDB covers, grid/list view, htmx filtering |
 
 ---
 
@@ -301,7 +322,7 @@ Your game library is now running! Access it at:
 http://your-server-ip:5000
 ```
 
-Enjoy organizing and launching your games! ☁️✨
+Click ⚙️ Admin to manage your library right from the browser! ☁️✨
 
 ---
 
