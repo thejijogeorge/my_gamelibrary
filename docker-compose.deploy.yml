@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16
+    container_name: gamelibrary-db
+    environment:
+      POSTGRES_USER: gameapp
+      POSTGRES_PASSWORD: gameapp
+      POSTGRES_DB: gamelibrary
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameapp -d gamelibrary"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    image: thejijogeorge/gamelibrary-web:latest
+    container_name: gamelibrary-web
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://gameapp:gameapp@db:5432/gamelibrary
+      FLASK_ENV: production
+      SECRET_KEY: change-this-in-production
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: |
+      sh -c "
+        echo 'Waiting for database...'
+        sleep 10
+        echo 'Running migrations...'
+        flask db upgrade
+        echo 'Starting gunicorn...'
+        gunicorn --bind 0.0.0.0:5000 wsgi:app
+      "
+    volumes:
+      - ./uploads:/app/uploads
+
+volumes:
+  pgdata:

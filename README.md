@@ -1,175 +1,308 @@
-# Game Library Project — Database & Schema Ready ✅
+# Game Library — Server Deployment Guide
 
-## What's built and tested
+A personal game aggregator that pulls games from Steam, Epic Games, and GOG with GeForce NOW streaming integration. Deploy to your own server with Docker.
 
-### 1. **Postgres Schema** (verified against live Postgres 16)
-- ✅ `platforms` — Steam, Epic, GOG (and ready for platform #4+)
-- ✅ `accounts` — multiple usernames per platform
-- ✅ `games_master` — canonical game list (IGDB ID, title, cover, genres, release date)
-- ✅ `owned_games_steam` — Steam-specific game ownership with playtime tracking
-- ✅ `owned_games_epic` — Epic-specific game ownership
-- ✅ `owned_games_gog` — GOG-specific game ownership
-- ✅ `gfn_games` — GeForce Now availability + deeplink URLs
-- ✅ `vw_owned_games_unified` — A SQL view that UNIONs all platform tables into one query-friendly shape
+## 📋 Prerequisites
 
-**Why this design:**
-- Each platform table is isolated (they have genuinely different identifiers: Steam = appid integer, Epic = namespace + item_id, GOG = product_id)
-- The unified view lets Flask query one source instead of writing complex UNIONs
-- Adding platform #4 means: write a new table (e.g., `owned_games_xbox`), add it to the view definition, done — no Flask code changes
-
-### 2. **Flask App Structure**
-
-```
-gamelibrary/
-├── Dockerfile                          # Production-ready (gunicorn)
-├── docker-compose.yml                  # ❌ Not yet created — see "Next Steps"
-├── requirements.txt                    # All deps pinned
-├── config.py                           # Environment-driven config (DATABASE_URL, etc.)
-├── wsgi.py                             # App entry point
-├── app/
-│   ├── __init__.py                     # Flask app factory (create_app)
-│   ├── models.py                       # All 9 SQLAlchemy models
-│   ├── routes/
-│   │   ├── __init__.py
-│   │   └── games.py                    # ❌ Placeholder — full htmx endpoints go here
-│   ├── ingestion/                      # ❌ Empty — Steam/Epic/GOG sync modules go here
-│   │   └── __init__.py
-│   └── matching/                       # ❌ Empty — IGDB fuzzy-matching logic goes here
-│       └── __init__.py
-├── migrations/                         # Alembic migrations (tested against Postgres)
-│   ├── env.py
-│   ├── versions/
-│   │   ├── 2d802ec2e524_initial_schema.py       # Creates all 7 tables
-│   │   └── 72f65884cab5_unified_owned_games_view.py  # Creates vw_owned_games_unified
-└── templates/                          # ❌ Empty — Jinja2 + htmx templates go here
-    └── (base.html, games_grid.html, games_list.html, _filters.html, _game_card.html)
-```
-
-### 3. **Key Design Principles**
-
-**Modularity for new platforms:**
-- Each platform inherits the same pattern (platform table → account rows → owned_games_* rows)
-- The unified view's SQL is straightforward to extend (just add a UNION ALL block)
-- Flask routes read from the view, so they never need updating
-
-**Normalized schema:**
-- games_master is the source of truth for game metadata (title, cover, IGDB ID)
-- Owned games link to games_master.game_id, not storing redundant data
-- One account_id uniquely identifies a user on a specific platform
-- Unique constraints prevent duplicate entries (e.g., can't own the same game twice on Steam under one account)
-
-**Production-ready config:**
-- All secrets/connection strings come from environment variables (`.env` file, not code)
-- DATABASE_URL format: `postgresql://user:pass@host:5432/dbname`
-- Same image works locally, in docker-compose, and in cloud (just swap the env)
+- **Docker & Docker Compose** installed on your server
+- **IGDB API credentials** (Twitch Client ID & Secret) — [Get them free](https://dev.twitch.tv/console/apps)
+- **Game library Excel file** (from local export)
+- Server with at least **2GB RAM** and **5GB storage**
 
 ---
 
-## Next Steps (in order)
+## 🚀 Quick Start (5 Minutes)
 
-### Phase 1️⃣: Flask App + Templates (ready to build)
-- [ ] Create `docker-compose.yml` with `db` (Postgres) and `web` (Flask) services
-- [ ] Write base.html (Jinja2 template with htmx script tag + CSS)
-- [ ] Write games_grid.html and games_list.html (the two view modes)
-- [ ] Build `/games` route in `routes/games.py` to fetch from `vw_owned_games_unified`
-- [ ] Wire up htmx buttons for grid/list toggle and per-column filtering
-- [ ] Add `.env.example` with `DATABASE_URL`, `SECRET_KEY`, etc.
+### **Step 1: Prepare Your Files**
 
-### Phase 2️⃣: Steam Ingestion (most important — it's fully automatable)
-- [ ] `ingestion/steam.py` — SteamSync class
-  - Fetch user's library via Steam API (needs SteamID + API key)
-  - Extract appid, title, playtime_minutes, last_played
-  - Upsert into `owned_games_steam`
-- [ ] `matching/matcher.py` — fuzzy match Steam titles against IGDB
-  - For each steam appid, search IGDB by title
-  - Update owned_games_steam.game_id once matched
-  - Flag any unmatched (manual review needed)
-
-### Phase 3️⃣: Epic/GOG Ingestion (less automatable — manual fallback)
-- [ ] `ingestion/epic.py` — Use `legendary` CLI (reverse-engineered, unofficial but works)
-- [ ] `ingestion/gog.py` — Use unofficial GOG endpoint or manual CSV import
-- [ ] Manual add/edit routes in Flask for when APIs fail or are missing
-
-### Phase 4️⃣: GeForce Now Integration
-- [ ] Seed `gfn_games` table from NVIDIA's published list (can do manually or write scraper)
-- [ ] Map each GFN game to games_master.game_id
-- [ ] Populate the `available_on_steam/epic/gog` flags
-- [ ] Front-end: add "Launch via GFN" button when `is_on_gfn = true`
-
-### Phase 5️⃣: UI Polish + Gamer Theme
-- [ ] Glassmorphism/neon CSS (dark background, frosted glass cards, platform-colored badges)
-- [ ] Responsive grid → list toggle (htmx + Tailwind)
-- [ ] Per-column filters (account, platform, genre, etc.)
-- [ ] Add/edit modal for manual game entries
-- [ ] Icons for platforms (Steam logo, Epic logo, etc.)
-
-### Phase 6️⃣: Containerize + Deploy
-- [ ] Test `docker-compose up` locally
-- [ ] Write production `.env` for your server's Postgres
-- [ ] Push to Docker Hub as `thejijogeorge/game-library:latest`
-- [ ] Deploy to your server (docker pull + docker-compose up)
-
----
-
-## Running Locally (right now)
-
-1. **Prerequisites:** Docker + docker-compose (or Postgres 16 + Python 3.12+)
-
-2. **Without Docker (local dev):**
-   ```bash
-   # Create a .env file
-   export DATABASE_URL="postgresql://gameapp:gameapp@localhost:5432/gamelibrary"
-   export FLASK_APP=wsgi.py
-   export FLASK_DEBUG=1
-
-   pip install -r requirements.txt
-   flask db upgrade          # Apply migrations (assumes Postgres is running)
-   flask run                 # Visit http://localhost:5000
-   ```
-
-3. **With Docker (coming next):**
-   ```bash
-   docker-compose up
-   # Postgres starts, migrations run automatically, Flask starts
-   # Visit http://localhost:5000
-   ```
-
----
-
-## Migration Notes
-
-The schema comes with two migrations (in `/migrations/versions/`):
-
-- **2d802ec2e524_initial_schema.py** — Creates all 7 tables with foreign keys, unique constraints, indexes
-- **72f65884cab5_unified_owned_games_view.py** — Creates the `vw_owned_games_unified` view
-
-To roll back:
 ```bash
-flask db downgrade  # Reverses to before migration 1
-flask db upgrade    # Re-applies both
+mkdir -p ~/my_gamelibrary
+cd ~/my_gamelibrary
+```
+
+Copy these files to the directory:
+- `docker-compose.deploy.yml` → rename to `docker-compose.yml`
+- `.env.example` → rename to `.env` and fill in credentials
+- `Epic_Games_Library Final.xlsx` (your game export)
+
+### **Step 2: Configure Environment**
+
+Edit `.env` with your IGDB credentials:
+
+```bash
+nano .env
+```
+
+Add:
+```
+IGDB_CLIENT_ID=your_twitch_client_id
+IGDB_ACCESS_TOKEN=your_twitch_client_secret
+FLASK_ENV=production
+SECRET_KEY=generate-a-random-secret-key-here
+```
+
+### **Step 3: Start Docker Containers**
+
+```bash
+sudo docker compose up -d
+```
+
+Wait for all services to be healthy:
+```bash
+sudo docker compose ps
+```
+
+Both containers should show `Up` status. ✅
+
+### **Step 4: Import Your Games**
+
+```bash
+sudo docker compose exec web python scripts/import_games_from_excel.py "Epic_Games_Library Final.xlsx"
+```
+
+You should see:
+```
+✅ Steam games imported: 408
+✅ Epic games imported: 333
+✅ GOG games imported: 93
+```
+
+### **Step 5: Fetch Cover Art**
+
+```bash
+sudo docker compose exec web python scripts/fetch_igdb_metadata.py
+```
+
+Sits back and watch it fetch beautiful game covers! ☕
+
+### **Step 6: Access Your Library**
+
+Open browser:
+```
+http://your-server-ip:5000
+```
+
+You should see your games with covers, filters, and GFN streaming buttons! 🎮
+
+---
+
+## 📁 Project Structure
+
+```
+my_gamelibrary/
+├── docker-compose.yml          ← Rename from docker-compose.deploy.yml
+├── .env                        ← Your credentials & secrets
+├── Epic_Games_Library Final.xlsx ← Your game library
+├── app/
+│   ├── routes/
+│   ├── templates/
+│   ├── static/css/
+│   └── models.py
+├── scripts/
+│   ├── import_games_from_excel.py
+│   ├── fetch_igdb_metadata.py
+│   ├── clear_cover_urls.py
+│   └── deduplicate_games.py
+├── migrations/                 ← Database schema
+├── Dockerfile
+└── requirements.txt
 ```
 
 ---
 
-## Key Files to Reference
+## 🔧 Common Commands
+
+### **View Logs**
+```bash
+sudo docker compose logs -f web
+```
+
+### **Access Database**
+```bash
+sudo docker compose exec db psql -U gameapp -d gamelibrary
+```
+
+### **Check Game Count**
+```bash
+sudo docker compose exec db psql -U gameapp -d gamelibrary \
+  -c "SELECT COUNT(*) FROM vw_owned_games_unified;"
+```
+
+### **Clear Blurry Covers & Re-fetch**
+```bash
+sudo docker compose exec web python scripts/clear_cover_urls.py
+sudo docker compose exec web python scripts/fetch_igdb_metadata.py
+```
+
+### **Remove Duplicate Games**
+```bash
+sudo docker compose exec -it web python scripts/deduplicate_games.py
+```
+
+### **Stop the App**
+```bash
+sudo docker compose down
+```
+
+### **Stop & Delete All Data**
+```bash
+sudo docker compose down -v
+```
+
+---
+
+## 🔐 Security Notes
+
+### **Before Production:**
+
+1. **Change SECRET_KEY** in `.env`:
+   ```bash
+   openssl rand -hex 32
+   ```
+
+2. **Change database password** in `.env` and `docker-compose.yml`:
+   ```
+   POSTGRES_PASSWORD=your-strong-password
+   ```
+
+3. **Use HTTPS** (recommended):
+   - Set up Nginx reverse proxy with SSL
+   - Run Gunicorn on localhost only, proxy through Nginx
+
+4. **Restrict access** to port 5000:
+   ```bash
+   sudo ufw allow 5000/tcp  # Or restrict to specific IPs
+   ```
+
+5. **Regular backups**:
+   ```bash
+   sudo docker compose exec db pg_dump -U gameapp gamelibrary > backup.sql
+   ```
+
+---
+
+## 🐛 Troubleshooting
+
+### **"Internal Server Error"**
+
+Check logs:
+```bash
+sudo docker compose logs web
+```
+
+Common causes:
+- Database migrations didn't run: `sudo docker compose exec web flask db upgrade`
+- Missing `.env` variables: Verify all IGDB credentials are set
+- Database connection failed: Ensure `db` container is healthy
+
+### **"Authorization Failure" from IGDB**
+
+Your IGDB credentials are wrong or expired:
+1. Go to https://dev.twitch.tv/console/apps
+2. Re-copy Client ID and Secret
+3. Update `.env`
+4. Restart: `sudo docker compose restart web`
+
+### **"No results found" for games**
+
+This is normal for niche/indie games. IGDB doesn't have everything. Popular AAA games should have covers.
+
+### **Database stuck or corrupted**
+
+Nuke and restart:
+```bash
+sudo docker compose down -v
+sudo docker compose up -d
+# Re-import games
+sudo docker compose exec web python scripts/import_games_from_excel.py "Epic_Games_Library Final.xlsx"
+```
+
+### **Performance issues**
+
+Increase Docker memory:
+```yaml
+# docker-compose.yml
+services:
+  web:
+    mem_limit: 2g
+  db:
+    mem_limit: 1g
+```
+
+---
+
+## 📊 Features
+
+✅ **Multi-platform game aggregator** — Steam, Epic Games, GOG  
+✅ **Beautiful cover art** — High-resolution (t_1080p) from IGDB  
+✅ **Real-time filtering** — Search, filter by platform/account  
+✅ **GeForce NOW integration** — One-click cloud gaming launch  
+✅ **Grid & list views** — Choose your preferred layout  
+✅ **Responsive design** — Works on mobile & desktop  
+✅ **Dark gamer theme** — Beautiful glassmorphism UI  
+
+---
+
+## 🔄 Update Process
+
+When new versions are released:
+
+```bash
+# Pull latest image
+sudo docker compose pull
+
+# Restart with new image
+sudo docker compose up -d
+
+# Migrations run automatically
+# Your game data is preserved!
+```
+
+---
+
+## 📝 Next Steps
+
+- Customize the UI theme in `app/static/css/style.css`
+- Add more platforms by modifying `app/models.py` and import scripts
+- Set up Nginx reverse proxy for production HTTPS
+- Configure automatic daily backups
+
+---
+
+## 💬 Support
+
+For issues or questions, check:
+- Docker logs: `sudo docker compose logs web`
+- Database status: `sudo docker compose ps`
+- Game count: `sudo docker compose exec db psql -U gameapp -d gamelibrary -c "SELECT COUNT(*) FROM vw_owned_games_unified;"`
+
+---
+
+## 📄 Files Explained
 
 | File | Purpose |
 |------|---------|
-| `models.py` | All SQLAlchemy table definitions — add new columns here when schema changes |
-| `config.py` | Environment-based config — update for deployment |
-| `wsgi.py` | Entry point — gunicorn calls this in production |
-| `migrations/versions/*.py` | Schema change history — version control these! |
+| `docker-compose.yml` | Container orchestration — defines web & database services |
+| `.env` | Environment variables — IGDB credentials, secrets |
+| `Dockerfile` | Web app container definition |
+| `app/routes/games.py` | Flask routes for filtering & displaying games |
+| `app/templates/` | HTML templates for UI |
+| `scripts/import_games_from_excel.py` | Import games from Excel file |
+| `scripts/fetch_igdb_metadata.py` | Fetch game covers & metadata from IGDB |
+| `migrations/` | Database schema & updates |
 
 ---
 
-## Questions?
+## 🎮 Have Fun!
 
-- **"How do I add a new platform?"** → Create `owned_games_newplatform` table in models.py, run `flask db migrate`, add a UNION block to `vw_owned_games_unified` migration
-- **"Where's the IGDB matcher?"** → In `/matching/` (empty for now, Phase 2️⃣)
-- **"How do I deploy this?"** → Push the `gamelibrary/` folder to your server, update `.env`, run `docker-compose up -d`
-- **"Can I switch databases later?"** → Yes — as long as you use SQLAlchemy ORM, just change `DATABASE_URL` in `.env` to point to a different Postgres (or another compatible dialect like MySQL, though Postgres is the validated target)
+Your game library is now running! Access it at:
+
+```
+http://your-server-ip:5000
+```
+
+Enjoy organizing and launching your games! ☁️✨
 
 ---
 
-**Status:** Database schema is production-ready. Flask skeleton is in place. Ready for Phase 1️⃣ (UI + Flask routes).
-
+**Made with ❤️ for gamers who want control over their libraries**
