@@ -47,6 +47,8 @@ class IGDBClient:
     def _get_oauth_token(self):
         """Exchange Client ID/Secret for OAuth access token."""
         print("[INFO] Requesting OAuth token from Twitch...")
+        print(f"[DEBUG] Client ID: {self.client_id[:10]}..." if self.client_id else "[DEBUG] Client ID: NOT SET")
+        print(f"[DEBUG] Client Secret: {self.client_secret[:10]}..." if self.client_secret else "[DEBUG] Client Secret: NOT SET")
         
         try:
             response = requests.post(
@@ -58,6 +60,8 @@ class IGDBClient:
                 },
                 timeout=10,
             )
+            
+            print(f"[DEBUG] OAuth response status: {response.status_code}")
             
             if response.status_code == 200:
                 data = response.json()
@@ -72,6 +76,7 @@ class IGDBClient:
                 else:
                     raise ValueError("No access token in response")
             else:
+                print(f"[ERROR] OAuth response body: {response.text}")
                 raise ValueError(f"OAuth request failed: {response.status_code} - {response.text}")
         
         except Exception as e:
@@ -278,14 +283,14 @@ class IGDBMetadataFetcher:
                     if cover_id:
                         # IGDB returns paths like: //images.igdb.com/igdb/image/upload/t_cover_big/co2tgb.jpg
                         if cover_id.startswith("//"):
-                            # Add https: prefix
-                            cover_url = f"https:{cover_id}"
+                            # Replace size parameter with higher quality (t_1080p for larger, sharper images)
+                            cover_url = f"https:{cover_id}".replace("t_thumb", "t_1080p").replace("t_cover_big", "t_1080p")
                         elif cover_id.startswith("http"):
-                            # Already a full URL
-                            cover_url = cover_id
+                            # Already a full URL, upgrade quality
+                            cover_url = cover_id.replace("t_thumb", "t_1080p").replace("t_cover_big", "t_1080p")
                         else:
-                            # Just an ID, build the full URL
-                            cover_url = f"https://images.igdb.com/igdb/image/upload/t_cover_big/{cover_id}.jpg"
+                            # Just an ID, build the full URL with high quality
+                            cover_url = f"https://images.igdb.com/igdb/image/upload/t_1080p/{cover_id}.jpg"
                 
                 # Format genres
                 genres_str = ", ".join([g.get("name", "") for g in genres]) if isinstance(genres, list) else None
