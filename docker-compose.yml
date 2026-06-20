@@ -19,6 +19,7 @@ services:
   web:
     build: .
     container_name: gamelibrary-web
+    env_file: .env
     environment:
       DATABASE_URL: postgresql://gameapp:gameapp@db:5432/gamelibrary
       FLASK_ENV: development

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Library</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- htmx -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Custom Gamer Theme CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    <style>
+        /* Prevent layout shift during htmx swaps */
+        .htmx-swapping {
+            opacity: 0;
+            transition: opacity 200ms ease-out;
+        }
+        .htmx-settling {
+            opacity: 1;
+            transition: opacity 200ms ease-in;
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans">
+    <!-- Header -->
+    <header class="sticky top-0 z-50 backdrop-blur-md bg-gray-900/80 border-b border-cyan-500/20 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+                        🎮 Game Library
+                    </h1>
+                    <p class="text-sm text-gray-400 mt-1">Your personal game aggregator</p>
+                </div>
+                <div id="stats" class="text-right text-sm">
+                    <p class="text-cyan-400 font-semibold">Loading stats...</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Filters Bar -->
+        <div class="mb-8 p-6 rounded-lg backdrop-blur-lg bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-purple-500/20 shadow-xl">
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <!-- Search -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-300 mb-2">Search Games</label>
+                    <input 
+                        type="text" 
+                        name="search" 
+                        placeholder="Type game name..."
+                        value="{{ search }}"
+                        hx-get="/games"
+                        hx-target="#games-container"
+                        hx-trigger="keyup changed delay:300ms"
+                        hx-include="[name='platform'], [name='account'], [name='gfn_only'], [name='view']"
+                        class="w-full px-4 py-2 rounded-lg bg-gray-800 border border-cyan-500/30 text-white placeholder-gray-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 transition"
+                    />
+                </div>
+
+                <!-- Platform Filter -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-300 mb-2">Platform</label>
+                    <select 
+                        name="platform"
+                        hx-get="/games"
+                        hx-target="#games-container"
+                        hx-trigger="change"
+                        hx-include="[name='search'], [name='account'], [name='gfn_only'], [name='view']"
+                        class="w-full px-4 py-2 rounded-lg bg-gray-800 border border-cyan-500/30 text-white focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 transition"
+                    >
+                        <option value="">All Platforms</option>
+                        {% for platform in platforms %}
+                        <option value="{{ platform }}" {% if platform == platform_filter %}selected{% endif %}>
+                            {{ platform }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Account Filter -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-300 mb-2">Account</label>
+                    <select 
+                        name="account"
+                        hx-get="/games"
+                        hx-target="#games-container"
+                        hx-trigger="change"
+                        hx-include="[name='search'], [name='platform'], [name='gfn_only'], [name='view']"
+                        class="w-full px-4 py-2 rounded-lg bg-gray-800 border border-cyan-500/30 text-white focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 transition"
+                    >
+                        <option value="">All Accounts</option>
+                        {% for account in accounts %}
+                        <option value="{{ account }}" {% if account == account_filter %}selected{% endif %}>
+                            {{ account }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- GFN Only Toggle -->
+                <div class="flex items-end">
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            name="gfn_only" 
+                            value="true"
+                            {% if gfn_only %}checked{% endif %}
+                            hx-get="/games"
+                            hx-target="#games-container"
+                            hx-trigger="change"
+                            hx-include="[name='search'], [name='platform'], [name='account'], [name='view']"
+                            class="w-5 h-5 rounded border-cyan-500/50 bg-gray-800 text-green-500 focus:ring-green-500/50 cursor-pointer"
+                        />
+                        <span class="text-sm font-semibold text-gray-300">GFN Only</span>
+                    </label>
+                </div>
+
+                <!-- View Toggle -->
+                <div class="flex items-end space-x-2">
+                    <button 
+                        hx-get="/games?view=grid&search={{ search }}&platform={{ platform_filter }}&account={{ account_filter }}&gfn_only={{ gfn_only }}"
+                        hx-target="#games-container"
+                        class="flex-1 px-4 py-2 rounded-lg font-semibold transition {% if view == 'grid' %}bg-cyan-600 text-white border-cyan-400{% else %}bg-gray-800 text-gray-300 border border-cyan-500/30 hover:border-cyan-400{% endif %}"
+                    >
+                        📊 Grid
+                    </button>
+                    <button 
+                        hx-get="/games?view=list&search={{ search }}&platform={{ platform_filter }}&account={{ account_filter }}&gfn_only={{ gfn_only }}"
+                        hx-target="#games-container"
+                        class="flex-1 px-4 py-2 rounded-lg font-semibold transition {% if view == 'list' %}bg-cyan-600 text-white border-cyan-400{% else %}bg-gray-800 text-gray-300 border border-cyan-500/30 hover:border-cyan-400{% endif %}"
+                    >
+                        📋 List
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Games Container -->
+        <div 
+            id="games-container"
+            hx-get="/games?view={{ view }}&search={{ search }}&platform={{ platform_filter }}&account={{ account_filter }}&gfn_only={{ gfn_only }}"
+            hx-trigger="load"
+            class="min-h-96 flex items-center justify-center"
+        >
+            <div class="text-center text-gray-400">
+                <p class="text-lg">Loading your games...</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-16 border-t border-cyan-500/20 bg-gray-900/50 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-4 py-8 text-center text-gray-400 text-sm">
+            <p>Game Library • Powered by Flask + htmx</p>
+        </div>
+    </footer>
+
+    <!-- Load stats on page load -->
+    <script>
+        fetch('/api/stats')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('stats').innerHTML = `
+                    <p class="text-cyan-400 font-semibold">${data.total_games} games</p>
+                    <p class="text-green-400 text-xs">${data.gfn_available} on GeForce NOW</p>
+                `;
+            });
+    </script>
+</body>
+</html>

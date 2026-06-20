@@ -76,6 +76,19 @@ class GameImporter:
         """Normalize game title for matching."""
         return title.lower().strip()
 
+    def is_valid_game_name(self, title: str) -> bool:
+        """Check if title is a valid game name (not a formula or junk data)."""
+        if not title or not isinstance(title, str):
+            return False
+        title = str(title).strip()
+        # Skip Excel formulas
+        if title.startswith("="):
+            return False
+        # Skip empty or too short
+        if len(title) < 2:
+            return False
+        return True
+
     def get_or_create_game_master(self, title: str) -> GameMaster:
         """
         Get or create a game in games_master.
@@ -170,8 +183,10 @@ class GameImporter:
                 try:
                     # Columns: No., Title, Platform, Time Played, Notes
                     title = row[1]
-                    if not title:
+                    if not self.is_valid_game_name(title):
                         continue
+                    
+                    title = str(title).strip()
                     
                     # Get or create game
                     game = self.get_or_create_game_master(title)
@@ -220,8 +235,10 @@ class GameImporter:
             try:
                 # Columns: No., Title, Platform, Price/Hour, Price, Hours Played, Review Score
                 title = row[1]
-                if not title:
+                if not self.is_valid_game_name(title):
                     continue
+                
+                title = str(title).strip()
                 
                 # Get or create game
                 game = self.get_or_create_game_master(title)
@@ -271,8 +288,10 @@ class GameImporter:
             try:
                 # Columns: No., Title, Platform
                 title = row[1]
-                if not title:
+                if not self.is_valid_game_name(title):
                     continue
+                
+                title = str(title).strip()
                 
                 # Get or create game
                 game = self.get_or_create_game_master(title)
@@ -312,10 +331,11 @@ class GameImporter:
             try:
                 # Columns: No., Title, Publisher, Available Store(s)
                 title = row[1]
-                available_stores = row[3] or ""
-                
-                if not title:
+                if not self.is_valid_game_name(title):
                     continue
+                
+                title = str(title).strip()
+                available_stores = row[3] or ""
                 
                 # Get or create game
                 game = self.get_or_create_game_master(title)

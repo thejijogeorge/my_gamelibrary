@@ -1,0 +1,90 @@
+<div class="overflow-x-auto rounded-lg border border-cyan-500/20 backdrop-blur-lg bg-gray-800/30">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b border-cyan-500/20 bg-gradient-to-r from-gray-800/50 to-gray-900/50">
+                <th class="px-6 py-4 text-left font-semibold text-cyan-400">Game Title</th>
+                <th class="px-6 py-4 text-left font-semibold text-purple-400">Platform</th>
+                <th class="px-6 py-4 text-left font-semibold text-blue-400">Account</th>
+                <th class="px-6 py-4 text-left font-semibold text-gray-400">Playtime</th>
+                <th class="px-6 py-4 text-left font-semibold text-green-400">GFN</th>
+                <th class="px-6 py-4 text-left font-semibold text-gray-400">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if games %}
+                {% for game in games %}
+                <tr class="border-b border-cyan-500/10 hover:bg-cyan-500/10 transition-colors">
+                    <td class="px-6 py-4 font-medium text-gray-100">
+                        <div class="flex items-start gap-3">
+                            {% if game.cover_url %}
+                            <img 
+                                src="{{ game.cover_url }}" 
+                                alt="{{ game.title }}"
+                                class="w-10 h-14 object-cover rounded-sm"
+                            />
+                            {% else %}
+                            <div class="w-10 h-14 rounded-sm bg-gray-700 flex items-center justify-center text-gray-500">
+                                🎮
+                            </div>
+                            {% endif %}
+                            <span class="line-clamp-2">{{ game.title }}</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4">
+                        {% if game.platform_name == 'Steam' %}
+                            <span class="px-3 py-1 rounded-full text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">🔵 Steam</span>
+                        {% elif game.platform_name == 'Epic' %}
+                            <span class="px-3 py-1 rounded-full text-xs font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">🟣 Epic</span>
+                        {% elif game.platform_name == 'GOG' %}
+                            <span class="px-3 py-1 rounded-full text-xs font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">🟡 GOG</span>
+                        {% else %}
+                            <span class="text-gray-400">{{ game.platform_name }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 text-gray-300">{{ game.account_username }}</td>
+                    <td class="px-6 py-4 text-gray-400">
+                        {% if game.playtime_minutes %}
+                            ⏱️ {{ (game.playtime_minutes / 60) | round(1) }}h
+                        {% else %}
+                            <span class="text-gray-600">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 text-center">
+                        {% if game.is_on_gfn %}
+                            <span class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-green-500/20 text-green-400 border border-green-500/30">☁️ Yes</span>
+                        {% else %}
+                            <span class="text-gray-600">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        <div class="flex gap-2 justify-end">
+                            {% if game.is_on_gfn and game.gfn_deeplink_url %}
+                            <a 
+                                href="{{ game.gfn_deeplink_url }}" 
+                                target="_blank"
+                                class="px-3 py-1 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors"
+                            >
+                                Launch
+                            </a>
+                            {% endif %}
+                            <button 
+                                class="px-3 py-1 rounded-lg text-xs font-semibold bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+                                onclick="alert('More details coming soon!')"
+                            >
+                                Info
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="6" class="px-6 py-12 text-center text-gray-400">
+                        <p class="text-2xl mb-2">🎮</p>
+                        <p>No games found matching your filters.</p>
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
