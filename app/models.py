@@ -62,6 +62,7 @@ class GameMaster(db.Model):
     game_modes = db.Column(db.String(255), nullable=True)
     developers = db.Column(db.String(500), nullable=True)
     publishers = db.Column(db.String(500), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default="Not Started")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

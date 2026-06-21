@@ -1,5 +1,5 @@
 """
-Games routes — display owned games with filtering.
+Games routes — display owned games with filtering, sorting, status.
 """
 
 from flask import Blueprint, render_template, request, jsonify
@@ -8,36 +8,42 @@ from app.models import GameMaster
 
 games_bp = Blueprint("games", __name__)
 
+VALID_SORTS = {
+    "title": "title",
+    "rating": "total_rating DESC NULLS LAST",
+    "release": "first_release_date DESC NULLS LAST",
+    "status": "status",
+}
+
 
 def get_filter_params():
     """Extract filter parameters from request."""
     return {
-        "view": request.args.get("view", "grid"),  # grid or list
+        "view": request.args.get("view", "grid"),
         "search": request.args.get("search", "").strip(),
         "platform": request.args.get("platform", "").strip(),
         "account": request.args.get("account", "").strip(),
         "gfn_only": request.args.get("gfn_only", "").lower() == "true",
+        "status": request.args.get("status", "").strip(),
+        "sort": request.args.get("sort", "title").strip(),
     }
 
 
 @games_bp.route("/")
 def index():
-    """Home page — display all games."""
-    # Get filter options for dropdowns
+    """Home page."""
     platforms = db.session.execute(
         db.text("SELECT DISTINCT platform_name FROM vw_owned_games_unified ORDER BY platform_name")
     ).fetchall()
-    
     accounts = db.session.execute(
         db.text("SELECT DISTINCT account_username FROM vw_owned_games_unified ORDER BY account_username")
     ).fetchall()
-    
-    # Flatten tuples to lists
+
     platforms = [p[0] for p in platforms] if platforms else []
     accounts = [a[0] for a in accounts] if accounts else []
-    
+
     params = get_filter_params()
-    
+
     return render_template(
         "index.html",
         view=params["view"],
@@ -45,6 +51,8 @@ def index():
         platform_filter=params["platform"],
         account_filter=params["account"],
         gfn_only=params["gfn_only"],
+        status_filter=params["status"],
+        sort=params["sort"],
         platforms=platforms,
         accounts=accounts,
     )
@@ -52,50 +60,49 @@ def index():
 
 @games_bp.route("/games")
 def get_games():
-    """
-    API endpoint to fetch filtered games.
-    Returns HTML partial for grid/list view (used by htmx).
-    """
+    """Filtered games — returns HTML partial for htmx."""
     params = get_filter_params()
-    
-    # Build filtered query
-    filters = ["1=1"]
-    
+
+    # Build parameterised filters
+    conditions = ["1=1"]
+    bind_params = {}
+
     if params["search"]:
-        filters.append(f"title ILIKE '%{params['search']}%'")
-    
+        conditions.append("title ILIKE :search")
+        bind_params["search"] = f"%{params['search']}%"
+
     if params["platform"]:
-        filters.append(f"platform_name = '{params['platform']}'")
-    
+        conditions.append("platform_name = :platform")
+        bind_params["platform"] = params["platform"]
+
     if params["account"]:
-        filters.append(f"account_username = '{params['account']}'")
-    
+        conditions.append("account_username = :account")
+        bind_params["account"] = params["account"]
+
     if params["gfn_only"]:
-        filters.append("is_on_gfn = true")
-    
-    where_clause = " AND ".join(filters)
-    
+        conditions.append("is_on_gfn = true")
+
+    if params["status"]:
+        conditions.append("status = :status")
+        bind_params["status"] = params["status"]
+
+    where_clause = " AND ".join(conditions)
+    order = VALID_SORTS.get(params["sort"], "title")
+
     query_str = f"""
-        SELECT 
-            game_id,
-            title,
-            cover_url,
-            platform_name,
-            account_username,
-            platform_specific_id,
-            playtime_minutes,
-            last_played,
-            is_on_gfn,
-            gfn_deeplink_url
+        SELECT
+            game_id, title, cover_url, platform_name,
+            account_username, platform_specific_id,
+            playtime_minutes, last_played, is_on_gfn,
+            gfn_deeplink_url, total_rating, status
         FROM vw_owned_games_unified
         WHERE {where_clause}
-        ORDER BY title
+        ORDER BY {order}, title
         LIMIT 500
     """
-    
-    games = db.session.execute(db.text(query_str)).fetchall()
-    
-    # Convert to list of dicts
+
+    games = db.session.execute(db.text(query_str), bind_params).fetchall()
+
     games_list = [
         {
             "game_id": g[0],
@@ -108,20 +115,20 @@ def get_games():
             "last_played": g[7],
             "is_on_gfn": g[8],
             "gfn_deeplink_url": g[9],
+            "total_rating": g[10],
+            "status": g[11] or "Not Started",
         }
         for g in games
     ]
-    
-    # Return HTML partial based on view type
+
     if params["view"] == "list":
         return render_template("_games_list.html", games=games_list)
-    else:  # grid
-        return render_template("_games_grid.html", games=games_list)
+    return render_template("_games_grid.html", games=games_list)
 
 
 @games_bp.route("/api/stats")
 def api_stats():
-    """Return library statistics."""
+    """Library statistics."""
     stats = {
         "total_games": db.session.execute(
             db.text("SELECT COUNT(*) FROM vw_owned_games_unified")
@@ -138,7 +145,7 @@ def api_stats():
 
 @games_bp.route("/game/<int:game_id>")
 def game_detail(game_id):
-    """Return game detail HTML partial for the info modal."""
+    """Game detail modal partial."""
     game = db.session.query(GameMaster).filter(
         GameMaster.game_id == game_id
     ).first()
@@ -146,7 +153,6 @@ def game_detail(game_id):
     if not game:
         return '<div class="p-6 text-center text-gray-400">Game not found.</div>'
 
-    # Check GFN status
     gfn_result = db.session.execute(
         db.text("SELECT gfn_url FROM gfn_games WHERE game_id = :gid"),
         {"gid": game_id},
@@ -154,11 +160,10 @@ def game_detail(game_id):
     is_on_gfn = gfn_result is not None
     gfn_url = gfn_result[0] if gfn_result else None
 
-    # Platforms this game is owned on
     platforms = db.session.execute(
         db.text("""
-            SELECT DISTINCT platform_name, account_username 
-            FROM vw_owned_games_unified 
+            SELECT DISTINCT platform_name, account_username
+            FROM vw_owned_games_unified
             WHERE game_id = :gid
         """),
         {"gid": game_id},
@@ -171,3 +176,31 @@ def game_detail(game_id):
         gfn_url=gfn_url,
         platforms=platforms,
     )
+
+
+@games_bp.route("/game/<int:game_id>/status", methods=["POST"])
+def update_status(game_id):
+    """Update game status (htmx)."""
+    new_status = request.form.get("status", "Not Started")
+
+    if new_status not in ("Not Started", "Started", "Completed"):
+        return '<span class="text-red-400 text-xs">Invalid status</span>', 400
+
+    game = db.session.query(GameMaster).filter(
+        GameMaster.game_id == game_id
+    ).first()
+
+    if not game:
+        return '<span class="text-red-400 text-xs">Game not found</span>', 404
+
+    game.status = new_status
+    db.session.commit()
+
+    colors = {
+        "Not Started": "gray",
+        "Started": "yellow",
+        "Completed": "green",
+    }
+    c = colors.get(new_status, "gray")
+
+    return f'<span class="px-3 py-1 rounded-full text-xs font-bold bg-{c}-500/20 text-{c}-400 border border-{c}-500/30">{new_status}</span>'

@@ -19,27 +19,51 @@ _tasks = {}
 
 
 def _run_script_background(task_id, script_args, app):
-    """Run a Python script in background and track status."""
+    """Run a Python script in background and stream output in real-time."""
     _tasks[task_id]["status"] = "running"
     _tasks[task_id]["started_at"] = datetime.utcnow().isoformat()
+    _tasks[task_id]["recent_lines"] = []
+    _tasks[task_id]["output"] = ""
+    _tasks[task_id]["errors"] = ""
 
     try:
-        result = subprocess.run(
-            ["python"] + script_args,
-            capture_output=True,
+        process = subprocess.Popen(
+            ["python", "-u"] + script_args,  # -u for unbuffered output
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=600,  # 10 min max
             cwd="/app",
         )
-        _tasks[task_id]["output"] = result.stdout[-3000:] if result.stdout else ""
-        _tasks[task_id]["errors"] = result.stderr[-1000:] if result.stderr else ""
 
-        if result.returncode == 0:
+        all_output = []
+
+        # Read stdout line by line in real-time
+        for line in process.stdout:
+            line = line.rstrip()
+            if line:
+                all_output.append(line)
+                # Keep last 5 meaningful lines for live status
+                recent = _tasks[task_id]["recent_lines"]
+                recent.append(line)
+                if len(recent) > 5:
+                    recent.pop(0)
+
+        # Wait for process to finish
+        process.wait(timeout=600)
+
+        # Capture any remaining stderr
+        stderr_output = process.stderr.read() if process.stderr else ""
+
+        _tasks[task_id]["output"] = "\n".join(all_output[-50:])
+        _tasks[task_id]["errors"] = stderr_output[-1000:] if stderr_output else ""
+
+        if process.returncode == 0:
             _tasks[task_id]["status"] = "completed"
         else:
             _tasks[task_id]["status"] = "failed"
 
     except subprocess.TimeoutExpired:
+        process.kill()
         _tasks[task_id]["status"] = "timeout"
         _tasks[task_id]["errors"] = "Script exceeded 10 minute timeout."
     except Exception as e:
@@ -110,6 +134,38 @@ def fetch_covers():
     )
 
 
+# ── Deduplicate Games ────────────────────────────────────────
+
+@admin_bp.route("/deduplicate", methods=["POST"])
+def deduplicate():
+    """Remove duplicate games (same game + storefront + gamer ID)."""
+    total_deleted = 0
+
+    # Deduplicate each owned_games table
+    for table, id_col in [
+        ("owned_games_steam", "steam_appid"),
+        ("owned_games_epic", "epic_item_id"),
+        ("owned_games_gog", "gog_product_id"),
+    ]:
+        result = db.session.execute(db.text(f"""
+            DELETE FROM {table}
+            WHERE id NOT IN (
+                SELECT MIN(id)
+                FROM {table}
+                GROUP BY account_id, game_id
+            )
+        """))
+        deleted = result.rowcount
+        total_deleted += deleted
+
+    db.session.commit()
+
+    if total_deleted > 0:
+        return _render_status("completed", f"✅ Removed <strong>{total_deleted}</strong> duplicate entries.")
+    else:
+        return _render_status("completed", "✅ No duplicates found — library is clean!")
+
+
 # ── Populate GFN URLs ────────────────────────────────────────
 
 @admin_bp.route("/fetch-details", methods=["POST"])
@@ -162,7 +218,16 @@ def task_status(task_id):
         return _render_status("error", "Task not found.")
 
     if task["status"] == "running":
-        return _render_status("running", "Still working...", task_id=task_id)
+        recent = task.get("recent_lines", [])
+        if recent:
+            # Show the last few lines of output as live progress
+            progress_html = "<br>".join(
+                f'<span class="text-cyan-300">{line}</span>' 
+                for line in recent[-3:]
+            )
+            return _render_status("running", progress_html, task_id=task_id)
+        else:
+            return _render_status("running", "Starting...", task_id=task_id)
     elif task["status"] == "completed":
         # Extract last few meaningful lines from output
         output = task.get("output", "")

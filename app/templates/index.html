@@ -123,9 +123,16 @@
                         <button 
                             hx-post="/admin/populate-gfn" 
                             hx-target="#gfn-populate-status"
-                            class="w-full px-4 py-2 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition mb-3"
+                            class="w-full px-4 py-2 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition mb-2"
                         >
                             Populate GFN URLs
+                        </button>
+                        <button 
+                            hx-post="/admin/deduplicate" 
+                            hx-target="#gfn-populate-status"
+                            class="w-full px-4 py-2 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white transition mb-3"
+                        >
+                            Remove Duplicates
                         </button>
                         <div id="gfn-populate-status"></div>
                     </div>
@@ -158,10 +165,10 @@
     <main class="max-w-7xl mx-auto px-4 py-8">
         <!-- Filters Bar -->
         <div class="mb-8 p-6 rounded-lg backdrop-blur-lg bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-purple-500/20 shadow-xl">
-            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
                 <!-- Search -->
                 <div>
-                    <label class="block text-sm font-semibold text-gray-300 mb-2">Search Games</label>
+                    <label class="block text-sm font-semibold text-gray-300 mb-2">Search</label>
                     <input 
                         type="text" 
                         name="search" 
@@ -170,7 +177,7 @@
                         hx-get="/games"
                         hx-target="#games-container"
                         hx-trigger="keyup changed delay:300ms"
-                        hx-include="[name='platform'], [name='account'], [name='gfn_only'], [name='view']"
+                        hx-include="[name='platform'], [name='account'], [name='gfn_only'], [name='status'], [name='sort'], [name='view']"
                         class="w-full px-4 py-2 rounded-lg bg-gray-800 border border-cyan-500/30 text-white placeholder-gray-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 transition"
                     />
                 </div>
@@ -183,14 +190,12 @@
                         hx-get="/games"
                         hx-target="#games-container"
                         hx-trigger="change"
-                        hx-include="[name='search'], [name='account'], [name='gfn_only'], [name='view']"
-                        class="w-full px-4 py-2 rounded-lg bg-gray-800 border border-cyan-500/30 text-white focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 transition"
+                        hx-include="[name='search'], [name='account'], [name='gfn_only'], [name='status'], [name='sort'], [name='view']"
+                        class="w-full px-4 py-2 rounded-lg bg-gray-800 border border-cyan-500/30 text-white focus:border-cyan-400 focus:outline-none transition"
                     >
                         <option value="">All Platforms</option>
                         {% for platform in platforms %}
-                        <option value="{{ platform }}" {% if platform == platform_filter %}selected{% endif %}>
-                            {{ platform }}
-                        </option>
+                        <option value="{{ platform }}" {% if platform == platform_filter %}selected{% endif %}>{{ platform }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -203,15 +208,49 @@
                         hx-get="/games"
                         hx-target="#games-container"
                         hx-trigger="change"
-                        hx-include="[name='search'], [name='platform'], [name='gfn_only'], [name='view']"
-                        class="w-full px-4 py-2 rounded-lg bg-gray-800 border border-cyan-500/30 text-white focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20 transition"
+                        hx-include="[name='search'], [name='platform'], [name='gfn_only'], [name='status'], [name='sort'], [name='view']"
+                        class="w-full px-4 py-2 rounded-lg bg-gray-800 border border-cyan-500/30 text-white focus:border-cyan-400 focus:outline-none transition"
                     >
                         <option value="">All Accounts</option>
                         {% for account in accounts %}
-                        <option value="{{ account }}" {% if account == account_filter %}selected{% endif %}>
-                            {{ account }}
-                        </option>
+                        <option value="{{ account }}" {% if account == account_filter %}selected{% endif %}>{{ account }}</option>
                         {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Status Filter -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-300 mb-2">Status</label>
+                    <select 
+                        name="status"
+                        hx-get="/games"
+                        hx-target="#games-container"
+                        hx-trigger="change"
+                        hx-include="[name='search'], [name='platform'], [name='account'], [name='gfn_only'], [name='sort'], [name='view']"
+                        class="w-full px-4 py-2 rounded-lg bg-gray-800 border border-cyan-500/30 text-white focus:border-cyan-400 focus:outline-none transition"
+                    >
+                        <option value="">All Statuses</option>
+                        <option value="Not Started" {% if status_filter == 'Not Started' %}selected{% endif %}>Not Started</option>
+                        <option value="Started" {% if status_filter == 'Started' %}selected{% endif %}>Started</option>
+                        <option value="Completed" {% if status_filter == 'Completed' %}selected{% endif %}>Completed</option>
+                    </select>
+                </div>
+
+                <!-- Sort -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-300 mb-2">Sort By</label>
+                    <select 
+                        name="sort"
+                        hx-get="/games"
+                        hx-target="#games-container"
+                        hx-trigger="change"
+                        hx-include="[name='search'], [name='platform'], [name='account'], [name='gfn_only'], [name='status'], [name='view']"
+                        class="w-full px-4 py-2 rounded-lg bg-gray-800 border border-cyan-500/30 text-white focus:border-cyan-400 focus:outline-none transition"
+                    >
+                        <option value="title" {% if sort == 'title' %}selected{% endif %}>Name (A-Z)</option>
+                        <option value="rating" {% if sort == 'rating' %}selected{% endif %}>Rating (High-Low)</option>
+                        <option value="release" {% if sort == 'release' %}selected{% endif %}>Release Date (New)</option>
+                        <option value="status" {% if sort == 'status' %}selected{% endif %}>Status</option>
                     </select>
                 </div>
 
@@ -226,7 +265,7 @@
                             hx-get="/games"
                             hx-target="#games-container"
                             hx-trigger="change"
-                            hx-include="[name='search'], [name='platform'], [name='account'], [name='view']"
+                            hx-include="[name='search'], [name='platform'], [name='account'], [name='status'], [name='sort'], [name='view']"
                             class="w-5 h-5 rounded border-cyan-500/50 bg-gray-800 text-green-500 focus:ring-green-500/50 cursor-pointer"
                         />
                         <span class="text-sm font-semibold text-gray-300">GFN Only</span>
@@ -236,16 +275,18 @@
                 <!-- View Toggle -->
                 <div class="flex items-end space-x-2">
                     <button 
-                        hx-get="/games?view=grid&search={{ search }}&platform={{ platform_filter }}&account={{ account_filter }}&gfn_only={{ gfn_only }}"
+                        hx-get="/games?view=grid"
                         hx-target="#games-container"
-                        class="flex-1 px-4 py-2 rounded-lg font-semibold transition {% if view == 'grid' %}bg-cyan-600 text-white border-cyan-400{% else %}bg-gray-800 text-gray-300 border border-cyan-500/30 hover:border-cyan-400{% endif %}"
+                        hx-include="[name='search'], [name='platform'], [name='account'], [name='gfn_only'], [name='status'], [name='sort']"
+                        class="flex-1 px-4 py-2 rounded-lg font-semibold transition {% if view == 'grid' %}bg-cyan-600 text-white{% else %}bg-gray-800 text-gray-300 border border-cyan-500/30 hover:border-cyan-400{% endif %}"
                     >
                         📊 Grid
                     </button>
                     <button 
-                        hx-get="/games?view=list&search={{ search }}&platform={{ platform_filter }}&account={{ account_filter }}&gfn_only={{ gfn_only }}"
+                        hx-get="/games?view=list"
                         hx-target="#games-container"
-                        class="flex-1 px-4 py-2 rounded-lg font-semibold transition {% if view == 'list' %}bg-cyan-600 text-white border-cyan-400{% else %}bg-gray-800 text-gray-300 border border-cyan-500/30 hover:border-cyan-400{% endif %}"
+                        hx-include="[name='search'], [name='platform'], [name='account'], [name='gfn_only'], [name='status'], [name='sort']"
+                        class="flex-1 px-4 py-2 rounded-lg font-semibold transition {% if view == 'list' %}bg-cyan-600 text-white{% else %}bg-gray-800 text-gray-300 border border-cyan-500/30 hover:border-cyan-400{% endif %}"
                     >
                         📋 List
                     </button>

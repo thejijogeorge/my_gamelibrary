@@ -7,6 +7,7 @@
                 <th class="px-6 py-4 text-left font-semibold text-blue-400">Account</th>
                 <th class="px-6 py-4 text-left font-semibold text-gray-400">Playtime</th>
                 <th class="px-6 py-4 text-left font-semibold text-green-400">GFN</th>
+                <th class="px-6 py-4 text-left font-semibold text-orange-400">Status</th>
                 <th class="px-6 py-4 text-left font-semibold text-gray-400">Actions</th>
             </tr>
         </thead>
@@ -56,6 +57,14 @@
                             <span class="text-gray-600">-</span>
                         {% endif %}
                     </td>
+                    <td class="px-6 py-4">
+                        <span class="px-3 py-1 rounded-full text-xs font-bold
+                            {% if game.status == 'Completed' %}bg-green-500/20 text-green-400 border border-green-500/30
+                            {% elif game.status == 'Started' %}bg-yellow-500/20 text-yellow-400 border border-yellow-500/30
+                            {% else %}bg-gray-600/20 text-gray-400 border border-gray-600/30{% endif %}">
+                            {{ game.status or 'Not Started' }}
+                        </span>
+                    </td>
                     <td class="px-6 py-4 text-right">
                         <div class="flex gap-2 justify-end">
                             {% if game.is_on_gfn %}
@@ -78,7 +87,7 @@
                 {% endfor %}
             {% else %}
                 <tr>
-                    <td colspan="6" class="px-6 py-12 text-center text-gray-400">
+                    <td colspan="7" class="px-6 py-12 text-center text-gray-400">
                         <p class="text-2xl mb-2">🎮</p>
                         <p>No games found matching your filters.</p>
                     </td>

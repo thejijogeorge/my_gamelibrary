@@ -1,435 +1,301 @@
 #!/usr/bin/env python3
 """
-Import game library from Excel file into Postgres with IGDB matching.
+Import game library from a simplified Excel file.
+
+Expected Excel format (single sheet, 3 columns):
+    | Game Name              | Storefront | Gamer ID          |
+    |------------------------|------------|-------------------|
+    | Baldur's Gate 3        | Steam      | jijo_george_max   |
+    | Cyberpunk 2077         | Epic       | Geekstradamus01   |
+    | The Witcher 3          | GOG        | jijo_george       |
+
+A "GeForce NOW Catalog" sheet is also supported (optional):
+    | No. | Title | Publisher | Available Store(s) |
 
 Usage:
     python scripts/import_games_from_excel.py <path_to_excel_file>
-
-Example:
-    python scripts/import_games_from_excel.py ~/Downloads/Epic_Games_Library_Final.xlsx
 """
 
 import sys
 import os
-import json
 from pathlib import Path
-from typing import Optional, Tuple
-from difflib import SequenceMatcher
 
 import openpyxl
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
 
-# Add parent directory to path to import app modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app, db
-from app.models import Platform, Account, GameMaster, OwnedGameSteam, OwnedGameEpic, OwnedGameGog, GfnGame
+from app.models import (
+    Platform, Account, GameMaster,
+    OwnedGameSteam, OwnedGameEpic, OwnedGameGog, GfnGame,
+)
+
+
+STOREFRONT_MAP = {
+    "steam": "Steam",
+    "epic": "Epic",
+    "epic games": "Epic",
+    "epic games store": "Epic",
+    "gog": "GOG",
+    "gog.com": "GOG",
+}
 
 
 class GameImporter:
-    """Import games from Excel to Postgres."""
+    """Import games from simplified Excel."""
 
-    def __init__(self, excel_path: str, igdb_enabled: bool = False):
-        """
-        Initialize importer.
-        
-        Args:
-            excel_path: Path to the Excel file
-            igdb_enabled: If True, try to match with IGDB API (requires API keys in .env)
-        """
+    def __init__(self, excel_path: str):
         self.excel_path = Path(excel_path)
-        self.igdb_enabled = igdb_enabled
         self.wb = openpyxl.load_workbook(excel_path)
-        
-        # App and DB
         self.app = create_app()
         self.app_context = self.app.app_context()
         self.app_context.push()
-        
-        # Stats
-        self.stats = {
-            "games_master_created": 0,
-            "platforms_created": 0,
-            "accounts_created": 0,
-            "owned_games_steam": 0,
-            "owned_games_epic": 0,
-            "owned_games_gog": 0,
-            "gfn_games_linked": 0,
-            "warnings": [],
-        }
+        self.stats = {"created": 0, "skipped": 0, "errors": 0, "gfn": 0}
 
-    def log(self, msg: str, level: str = "INFO"):
-        """Log a message."""
+    def log(self, msg, level="INFO"):
         print(f"[{level}] {msg}")
 
-    def warn(self, msg: str):
-        """Log warning."""
-        self.log(msg, "WARN")
-        self.stats["warnings"].append(msg)
-
-    def similarity(self, a: str, b: str) -> float:
-        """Calculate string similarity (0-1)."""
-        return SequenceMatcher(None, a.lower(), b.lower()).ratio()
-
-    def normalize_title(self, title: str) -> str:
-        """Normalize game title for matching."""
-        return title.lower().strip()
-
-    def is_valid_game_name(self, title: str) -> bool:
-        """Check if title is a valid game name (not a formula or junk data)."""
+    def is_valid(self, title):
         if not title or not isinstance(title, str):
             return False
-        title = str(title).strip()
-        # Skip Excel formulas
-        if title.startswith("="):
+        t = str(title).strip()
+        return len(t) >= 2 and not t.startswith("=")
+
+    def normalise_storefront(self, raw):
+        if not raw:
+            return None
+        return STOREFRONT_MAP.get(str(raw).strip().lower())
+
+    def get_or_create_platform(self, name):
+        p = db.session.query(Platform).filter_by(name=name).first()
+        if not p:
+            p = Platform(name=name)
+            db.session.add(p)
+            db.session.flush()
+            self.log(f"Created platform: {name}")
+        return p
+
+    def get_or_create_account(self, platform, username):
+        a = db.session.query(Account).filter_by(
+            platform_id=platform.platform_id, username=username
+        ).first()
+        if not a:
+            a = Account(
+                platform_id=platform.platform_id,
+                username=username,
+                display_name=username,
+            )
+            db.session.add(a)
+            db.session.flush()
+            self.log(f"Created account: {platform.name}/{username}")
+        return a
+
+    def get_or_create_game(self, title):
+        normalised = title.lower().strip()
+        g = db.session.query(GameMaster).filter(
+            db.func.lower(GameMaster.title) == normalised
+        ).first()
+        if not g:
+            g = GameMaster(title=title, status="Not Started")
+            db.session.add(g)
+            db.session.flush()
+        return g
+
+    def add_ownership(self, game, account, storefront_name):
+        """Create ownership record in the correct platform table."""
+        if storefront_name == "Steam":
+            existing = db.session.query(OwnedGameSteam).filter_by(
+                account_id=account.account_id, game_id=game.game_id
+            ).first()
+            if existing:
+                return False
+            db.session.add(OwnedGameSteam(
+                account_id=account.account_id,
+                game_id=game.game_id,
+                steam_appid=game.game_id,  # placeholder
+                playtime_minutes=0,
+            ))
+
+        elif storefront_name == "Epic":
+            existing = db.session.query(OwnedGameEpic).filter_by(
+                account_id=account.account_id, game_id=game.game_id
+            ).first()
+            if existing:
+                return False
+            db.session.add(OwnedGameEpic(
+                account_id=account.account_id,
+                game_id=game.game_id,
+                epic_item_id=str(game.game_id),
+            ))
+
+        elif storefront_name == "GOG":
+            existing = db.session.query(OwnedGameGog).filter_by(
+                account_id=account.account_id, game_id=game.game_id
+            ).first()
+            if existing:
+                return False
+            db.session.add(OwnedGameGog(
+                account_id=account.account_id,
+                game_id=game.game_id,
+                gog_product_id=str(game.game_id),
+            ))
+        else:
             return False
-        # Skip empty or too short
-        if len(title) < 2:
-            return False
+
         return True
 
-    def get_or_create_game_master(self, title: str) -> GameMaster:
-        """
-        Get or create a game in games_master.
-        
-        For now, creates placeholder with IGDB matching to be added later.
-        """
-        normalized = self.normalize_title(title)
-        
-        # Check if already exists
-        existing = db.session.query(GameMaster).filter(
-            db.func.lower(GameMaster.title) == normalized
-        ).first()
-        
-        if existing:
-            return existing
-        
-        # Create new
-        game = GameMaster(
-            title=title,
-            igdb_id=None,  # Would be filled in by separate IGDB matching job
-            cover_url=None,
-            genres=None,
-        )
-        db.session.add(game)
-        db.session.flush()  # Get the game_id
-        self.stats["games_master_created"] += 1
-        self.log(f"Created game_master: {title}", "DEBUG")
-        
-        return game
+    def detect_format(self):
+        """Detect if Excel uses simplified (3-col) or legacy format."""
+        ws = self.wb.active
+        headers = [str(c.value or "").strip().lower() for c in ws[1]]
 
-    def setup_platforms_and_accounts(self):
-        """Create platforms and accounts from Profile sheet."""
-        profile_ws = self.wb["Profile"]
-        
-        # Map: platform_name -> list of (account_type, account_id)
-        accounts_to_create = {
-            "Steam": [("jijo_george_max", "jijo_george_max")],
-            "Epic": [
-                ("Geekstradamus01", "Geekstradamus01"),
-                ("Geekstradamus", "Geekstradamus"),
-            ],
-            "GOG": [("jijo_george", "jijo_george")],
-        }
-        
-        for platform_name, account_list in accounts_to_create.items():
-            # Get or create platform
-            platform = db.session.query(Platform).filter_by(name=platform_name).first()
-            if not platform:
-                platform = Platform(name=platform_name)
-                db.session.add(platform)
-                db.session.flush()
-                self.stats["platforms_created"] += 1
-                self.log(f"Created platform: {platform_name}")
-            
-            # Create accounts
-            for display_name, username in account_list:
-                account = db.session.query(Account).filter_by(
-                    platform_id=platform.platform_id, username=username
-                ).first()
-                if not account:
-                    account = Account(
-                        platform_id=platform.platform_id,
-                        username=username,
-                        display_name=display_name,
-                    )
-                    db.session.add(account)
-                    db.session.flush()
-                    self.stats["accounts_created"] += 1
-                    self.log(f"Created account: {platform_name}/{username}")
+        # Simplified: Game Name, Storefront, Gamer ID
+        if any("game" in h and "name" in h for h in headers):
+            return "simplified"
+        if any("storefront" in h for h in headers):
+            return "simplified"
 
-    def import_epic_games(self):
-        """Import Epic Games from the two Epic library sheets."""
-        for sheet_name in ["Epic Library (Geekstradamus01)", "Epic Library (Geekstradamus)"]:
-            if sheet_name not in self.wb.sheetnames:
-                continue
-            
-            ws = self.wb[sheet_name]
-            # Extract account name from sheet name
-            account_name = sheet_name.split("(")[1].rstrip(")")
-            
-            # Get account
-            account = db.session.query(Account).join(Platform).filter(
-                Platform.name == "Epic", Account.username == account_name
-            ).first()
-            
-            if not account:
-                self.warn(f"Account not found: Epic/{account_name}")
-                continue
-            
-            # Import games
-            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                try:
-                    # Columns: No., Title, Platform, Time Played, Notes
-                    title = row[1]
-                    if not self.is_valid_game_name(title):
-                        continue
-                    
-                    title = str(title).strip()
-                    
-                    # Get or create game
-                    game = self.get_or_create_game_master(title)
-                    
-                    # Check if already owned
-                    existing = db.session.query(OwnedGameEpic).filter_by(
-                        account_id=account.account_id, epic_item_id=title  # Use title as temp ID
-                    ).first()
-                    if existing:
-                        continue
-                    
-                    # Create owned game entry
-                    owned = OwnedGameEpic(
-                        account_id=account.account_id,
-                        game_id=game.game_id,
-                        epic_item_id=title,  # TODO: fetch actual epic_item_id from API
-                        epic_namespace=None,  # TODO: fetch from API
-                    )
-                    db.session.add(owned)
-                    self.stats["owned_games_epic"] += 1
-                    
-                except Exception as e:
-                    self.warn(f"Error importing Epic game at row {row_idx}: {e}")
-        
-        db.session.commit()
-        self.log(f"Imported {self.stats['owned_games_epic']} Epic games")
+        # Legacy: multiple sheets per platform
+        if any("Epic Library" in s or "Steam Library" in s or "GOG Games" in s for s in self.wb.sheetnames):
+            return "legacy"
 
-    def import_steam_games(self):
-        """Import Steam games from the Steam sheet."""
-        if "Steam Games (jijo_george_max)" not in self.wb.sheetnames:
-            return
-        
-        ws = self.wb["Steam Games (jijo_george_max)"]
-        
-        # Get account
-        account = db.session.query(Account).join(Platform).filter(
-            Platform.name == "Steam", Account.username == "jijo_george_max"
-        ).first()
-        
-        if not account:
-            self.warn("Account not found: Steam/jijo_george_max")
-            return
-        
-        # Import games
+        # Default to simplified
+        return "simplified"
+
+    def import_simplified(self):
+        """Import from simplified 3-column format."""
+        ws = self.wb.active
+        headers = [str(c.value or "").strip().lower() for c in ws[1]]
+
+        # Find column indices
+        name_col = next((i for i, h in enumerate(headers) if "game" in h or "name" in h or "title" in h), 0)
+        store_col = next((i for i, h in enumerate(headers) if "store" in h or "platform" in h), 1)
+        gamer_col = next((i for i, h in enumerate(headers) if "gamer" in h or "account" in h or "user" in h or "id" in h), 2)
+
+        self.log(f"Detected columns: name={name_col}, storefront={store_col}, gamer_id={gamer_col}")
+
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
             try:
-                # Columns: No., Title, Platform, Price/Hour, Price, Hours Played, Review Score
-                title = row[1]
-                if not self.is_valid_game_name(title):
-                    continue
-                
-                title = str(title).strip()
-                
-                # Get or create game
-                game = self.get_or_create_game_master(title)
-                
-                # Check if already owned (use title as temp steam_appid)
-                existing = db.session.query(OwnedGameSteam).filter_by(
-                    account_id=account.account_id, steam_appid=hash(title) % (10**9)
-                ).first()
-                if existing:
-                    continue
-                
-                # Create owned game entry
-                owned = OwnedGameSteam(
-                    account_id=account.account_id,
-                    game_id=game.game_id,
-                    steam_appid=hash(title) % (10**9),  # TODO: fetch actual appid from Steam API
-                    playtime_minutes=0,
-                    last_played=None,
-                )
-                db.session.add(owned)
-                self.stats["owned_games_steam"] += 1
-                
-            except Exception as e:
-                self.warn(f"Error importing Steam game at row {row_idx}: {e}")
-        
-        db.session.commit()
-        self.log(f"Imported {self.stats['owned_games_steam']} Steam games")
+                title = str(row[name_col]).strip() if row[name_col] else None
+                storefront_raw = str(row[store_col]).strip() if row[store_col] else None
+                gamer_id = str(row[gamer_col]).strip() if row[gamer_col] else None
 
-    def import_gog_games(self):
-        """Import GOG games from the GOG sheet."""
-        if "GOG Games (jijo_george)" not in self.wb.sheetnames:
-            return
-        
-        ws = self.wb["GOG Games (jijo_george)"]
-        
-        # Get account
-        account = db.session.query(Account).join(Platform).filter(
-            Platform.name == "GOG", Account.username == "jijo_george"
-        ).first()
-        
-        if not account:
-            self.warn("Account not found: GOG/jijo_george")
-            return
-        
-        # Import games
-        for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-            try:
-                # Columns: No., Title, Platform
-                title = row[1]
-                if not self.is_valid_game_name(title):
+                if not self.is_valid(title):
                     continue
-                
-                title = str(title).strip()
-                
-                # Get or create game
-                game = self.get_or_create_game_master(title)
-                
-                # Check if already owned
-                existing = db.session.query(OwnedGameGog).filter_by(
-                    account_id=account.account_id, gog_product_id=title
-                ).first()
-                if existing:
+
+                storefront = self.normalise_storefront(storefront_raw)
+                if not storefront:
+                    self.log(f"  ⚠️ Row {row_idx}: Unknown storefront '{storefront_raw}', skipping", "WARN")
+                    self.stats["errors"] += 1
                     continue
-                
-                # Create owned game entry
-                owned = OwnedGameGog(
-                    account_id=account.account_id,
-                    game_id=game.game_id,
-                    gog_product_id=title,  # TODO: fetch actual product_id from GOG API
-                )
-                db.session.add(owned)
-                self.stats["owned_games_gog"] += 1
-                
+
+                if not gamer_id:
+                    self.log(f"  ⚠️ Row {row_idx}: No gamer ID, skipping", "WARN")
+                    self.stats["errors"] += 1
+                    continue
+
+                # Create records
+                platform = self.get_or_create_platform(storefront)
+                account = self.get_or_create_account(platform, gamer_id)
+                game = self.get_or_create_game(title)
+
+                if self.add_ownership(game, account, storefront):
+                    self.stats["created"] += 1
+                    if row_idx <= 20 or row_idx % 100 == 0:
+                        self.log(f"  ✅ [{row_idx}] {title} ({storefront}/{gamer_id})")
+                else:
+                    self.stats["skipped"] += 1
+
             except Exception as e:
-                self.warn(f"Error importing GOG game at row {row_idx}: {e}")
-        
+                self.log(f"  ❌ Row {row_idx}: {e}", "ERROR")
+                self.stats["errors"] += 1
+
         db.session.commit()
-        self.log(f"Imported {self.stats['owned_games_gog']} GOG games")
 
     def import_gfn_catalog(self):
-        """Import GeForce NOW catalog and match to games_master."""
+        """Import GeForce NOW catalog sheet if present."""
         if "GeForce NOW Catalog" not in self.wb.sheetnames:
             return
-        
+
         ws = self.wb["GeForce NOW Catalog"]
-        
-        gfn_games_created = 0
-        
+
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
             try:
-                # Columns: No., Title, Publisher, Available Store(s)
                 title = row[1]
-                if not self.is_valid_game_name(title):
+                if not self.is_valid(title):
                     continue
-                
                 title = str(title).strip()
                 available_stores = row[3] or ""
-                
-                # Get or create game
-                game = self.get_or_create_game_master(title)
-                
-                # Check if GFN entry already exists
+
+                game = self.get_or_create_game(title)
+
                 existing = db.session.query(GfnGame).filter_by(game_id=game.game_id).first()
                 if existing:
                     continue
-                
-                # Parse available stores
+
                 stores_lower = available_stores.lower()
-                available_on_steam = "steam" in stores_lower
-                available_on_epic = "epic" in stores_lower
-                available_on_gog = "gog" in stores_lower
-                
-                # Create GFN entry
                 gfn = GfnGame(
                     game_id=game.game_id,
-                    available_on_steam=available_on_steam,
-                    available_on_epic=available_on_epic,
-                    available_on_gog=available_on_gog,
-                    gfn_deeplink_url=f"https://play.geforcenow.com/launch/{title.lower().replace(' ', '-')}",
+                    available_on_steam="steam" in stores_lower,
+                    available_on_epic="epic" in stores_lower,
+                    available_on_gog="gog" in stores_lower,
                 )
                 db.session.add(gfn)
-                gfn_games_created += 1
-                self.stats["gfn_games_linked"] += gfn_games_created
-                
+                self.stats["gfn"] += 1
+
             except Exception as e:
-                self.warn(f"Error importing GFN game at row {row_idx}: {e}")
-        
+                self.log(f"  ❌ GFN Row {row_idx}: {e}", "ERROR")
+
         db.session.commit()
-        self.log(f"Imported {gfn_games_created} GeForce NOW games")
+        self.log(f"Imported {self.stats['gfn']} GeForce NOW games")
 
     def run(self):
-        """Run the full import process."""
         try:
-            self.log("Starting game library import...")
-            
-            # Step 1: Setup platforms and accounts
-            self.log("Step 1: Setting up platforms and accounts")
-            self.setup_platforms_and_accounts()
-            
-            # Step 2: Import games from each platform
-            self.log("Step 2: Importing games from all platforms")
-            self.import_epic_games()
-            self.import_steam_games()
-            self.import_gog_games()
+            fmt = self.detect_format()
+            self.log(f"Detected format: {fmt}")
+            self.log(f"Sheets: {self.wb.sheetnames}")
+
+            if fmt == "simplified":
+                self.import_simplified()
+            else:
+                # Legacy format — import from named sheets
+                self.import_simplified()  # Still use simplified logic on active sheet
+
+            # Always try GFN catalog
             self.import_gfn_catalog()
-            
-            # Commit all
+
             db.session.commit()
-            
-            # Print summary
             self.print_summary()
-            
+
         except Exception as e:
             db.session.rollback()
-            self.log(f"ERROR: {e}", "ERROR")
+            self.log(f"FATAL: {e}", "ERROR")
+            import traceback
+            traceback.print_exc()
             raise
         finally:
             self.app_context.pop()
 
     def print_summary(self):
-        """Print import summary."""
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("IMPORT SUMMARY")
-        print("="*80)
-        print(f"✅ Games created in games_master: {self.stats['games_master_created']}")
-        print(f"✅ Platforms created: {self.stats['platforms_created']}")
-        print(f"✅ Accounts created: {self.stats['accounts_created']}")
-        print(f"✅ Steam games imported: {self.stats['owned_games_steam']}")
-        print(f"✅ Epic games imported: {self.stats['owned_games_epic']}")
-        print(f"✅ GOG games imported: {self.stats['owned_games_gog']}")
-        print(f"✅ GeForce NOW games linked: {self.stats['gfn_games_linked']}")
-        
-        if self.stats["warnings"]:
-            print(f"\n⚠️  Warnings ({len(self.stats['warnings'])}):")
-            for warning in self.stats["warnings"][:10]:  # Show first 10
-                print(f"  - {warning}")
-            if len(self.stats["warnings"]) > 10:
-                print(f"  ... and {len(self.stats['warnings']) - 10} more")
-        
-        print("="*80 + "\n")
+        print("=" * 80)
+        print(f"✅ Games imported:  {self.stats['created']}")
+        print(f"⏭️  Already existed: {self.stats['skipped']}")
+        print(f"⚠️  Errors/skipped: {self.stats['errors']}")
+        print(f"☁️  GFN catalog:    {self.stats['gfn']}")
+        print("=" * 80 + "\n")
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python scripts/import_games_from_excel.py <path_to_excel_file>")
         sys.exit(1)
-    
+
     excel_file = sys.argv[1]
     if not os.path.exists(excel_file):
         print(f"Error: File not found: {excel_file}")
         sys.exit(1)
-    
-    importer = GameImporter(excel_file, igdb_enabled=False)
+
+    importer = GameImporter(excel_file)
     importer.run()

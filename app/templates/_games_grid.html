@@ -37,6 +37,14 @@
                     ☁️ GFN
                 </div>
                 {% endif %}
+
+                <!-- Status Badge -->
+                <div class="absolute bottom-2 left-2 px-2 py-1 rounded-full text-xs font-bold backdrop-blur-md
+                    {% if game.status == 'Completed' %}bg-green-500/80 text-white
+                    {% elif game.status == 'Started' %}bg-yellow-500/80 text-black
+                    {% else %}bg-gray-600/80 text-gray-200{% endif %}">
+                    {% if game.status == 'Completed' %}✅{% elif game.status == 'Started' %}🎮{% else %}⏸️{% endif %} {{ game.status }}
+                </div>
             </div>
             
             <!-- Info -->
