@@ -342,3 +342,72 @@ def refresh_igdb(game_id):
 
     except Exception as e:
         return f'<span class="text-red-400 text-xs">⚠️ Error: {str(e)}</span>'
+
+
+@games_bp.route("/game/<int:game_id>/delete", methods=["POST"])
+def delete_game(game_id):
+    """Delete a game and all its ownership records."""
+    game = db.session.query(GameMaster).filter(
+        GameMaster.game_id == game_id
+    ).first()
+
+    if not game:
+        return '<span class="text-red-400 text-xs">Game not found</span>', 404
+
+    game_title = game.title
+
+    try:
+        # Delete from all owned_games_* tables
+        db.session.execute(
+            db.text("DELETE FROM owned_games_steam WHERE game_id = :gid"),
+            {"gid": game_id}
+        )
+        db.session.execute(
+            db.text("DELETE FROM owned_games_epic WHERE game_id = :gid"),
+            {"gid": game_id}
+        )
+        db.session.execute(
+            db.text("DELETE FROM owned_games_gog WHERE game_id = :gid"),
+            {"gid": game_id}
+        )
+        db.session.execute(
+            db.text("DELETE FROM owned_games_ea WHERE game_id = :gid"),
+            {"gid": game_id}
+        )
+        db.session.execute(
+            db.text("DELETE FROM owned_games_battlenet WHERE game_id = :gid"),
+            {"gid": game_id}
+        )
+        db.session.execute(
+            db.text("DELETE FROM owned_games_ubisoft WHERE game_id = :gid"),
+            {"gid": game_id}
+        )
+
+        # Delete from gfn_games if exists
+        db.session.execute(
+            db.text("DELETE FROM gfn_games WHERE game_id = :gid"),
+            {"gid": game_id}
+        )
+
+        # Delete from games_master
+        db.session.delete(game)
+        db.session.commit()
+
+        # Return success message and close modal via htmx
+        return '''
+        <div class="p-8 text-center">
+            <div class="text-5xl mb-4">🗑️</div>
+            <p class="text-green-400 font-semibold mb-4">Game removed successfully!</p>
+            <p class="text-gray-400 text-sm mb-6">''' + game_title + ''' has been deleted from your library.</p>
+            <button 
+                onclick="closeModal()"
+                class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold transition"
+            >
+                Close Modal
+            </button>
+        </div>
+        '''
+
+    except Exception as e:
+        db.session.rollback()
+        return f'<span class="text-red-400 text-xs">⚠️ Error deleting game: {str(e)}</span>', 500
