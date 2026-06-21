@@ -108,7 +108,10 @@ class IGDBClient:
         # Build IGDB query
         igdb_query = f"""
             search "{query}";
-            fields id, name, cover.url, genres.name, first_release_date;
+            fields id, name, cover.url, genres.name, first_release_date,
+                   summary, rating, total_rating, total_rating_count,
+                   themes.name, game_modes.name,
+                   involved_companies.company.name, involved_companies.developer, involved_companies.publisher;
             limit {limit};
         """
         
@@ -142,6 +145,49 @@ class IGDBClient:
             return None
         # IGDB cover URLs format: //images.igdb.com/igdb/image/upload/t_cover_big/{cover_id}.jpg
         return f"https://images.igdb.com/igdb/image/upload/t_cover_big/{cover_id}.jpg"
+    
+    def get_game_by_igdb_id(self, igdb_id: int) -> Optional[dict]:
+        """
+        Fetch a game by its IGDB ID (for updating details of already-matched games).
+        
+        Args:
+            igdb_id: IGDB game ID
+        
+        Returns:
+            Game data dict or None
+        """
+        self._handle_rate_limit()
+        
+        igdb_query = f"""
+            fields id, name, cover.url, genres.name, first_release_date,
+                   summary, rating, total_rating, total_rating_count,
+                   themes.name, game_modes.name,
+                   involved_companies.company.name, involved_companies.developer, involved_companies.publisher;
+            where id = {igdb_id};
+            limit 1;
+        """
+        
+        try:
+            response = requests.post(
+                f"{self.BASE_URL}/games",
+                headers=self.headers,
+                data=igdb_query,
+                timeout=10,
+            )
+            
+            if "X-Rate-Limit-Remaining" in response.headers:
+                self.rate_limit_remaining = int(response.headers["X-Rate-Limit-Remaining"])
+            
+            if response.status_code == 200:
+                results = response.json()
+                return results[0] if results else None
+            else:
+                print(f"[ERROR] IGDB API error: {response.status_code} - {response.text[:200]}")
+                return None
+        
+        except Exception as e:
+            print(f"[ERROR] Request failed: {e}")
+            return None
 
 
 class GameMatcher:
@@ -274,6 +320,13 @@ class IGDBMetadataFetcher:
                 cover_data = best_match.get("cover")
                 genres = best_match.get("genres", [])
                 first_release_date = best_match.get("first_release_date")
+                summary = best_match.get("summary")
+                rating = best_match.get("rating")
+                total_rating = best_match.get("total_rating")
+                total_rating_count = best_match.get("total_rating_count")
+                themes = best_match.get("themes", [])
+                game_modes = best_match.get("game_modes", [])
+                involved_companies = best_match.get("involved_companies", [])
                 
                 # Build cover URL correctly
                 cover_url = None
@@ -295,6 +348,26 @@ class IGDBMetadataFetcher:
                 # Format genres
                 genres_str = ", ".join([g.get("name", "") for g in genres]) if isinstance(genres, list) else None
                 
+                # Format themes
+                themes_str = ", ".join([t.get("name", "") for t in themes]) if isinstance(themes, list) else None
+                
+                # Format game modes
+                game_modes_str = ", ".join([m.get("name", "") for m in game_modes]) if isinstance(game_modes, list) else None
+                
+                # Extract developers and publishers
+                developers_list = []
+                publishers_list = []
+                if isinstance(involved_companies, list):
+                    for ic in involved_companies:
+                        company_name = ic.get("company", {}).get("name", "") if isinstance(ic.get("company"), dict) else ""
+                        if company_name:
+                            if ic.get("developer"):
+                                developers_list.append(company_name)
+                            if ic.get("publisher"):
+                                publishers_list.append(company_name)
+                developers_str = ", ".join(developers_list) if developers_list else None
+                publishers_str = ", ".join(publishers_list) if publishers_list else None
+                
                 # Check if this IGDB ID already exists in another game
                 existing_igdb = db.session.query(GameMaster).filter(
                     GameMaster.igdb_id == new_igdb_id,
@@ -310,6 +383,14 @@ class IGDBMetadataFetcher:
                 game.igdb_id = new_igdb_id
                 game.cover_url = cover_url
                 game.genres = genres_str
+                game.summary = summary
+                game.rating = round(rating, 1) if rating else None
+                game.total_rating = round(total_rating, 1) if total_rating else None
+                game.total_rating_count = total_rating_count
+                game.themes = themes_str
+                game.game_modes = game_modes_str
+                game.developers = developers_str
+                game.publishers = publishers_str
                 if first_release_date:
                     from datetime import datetime
                     game.first_release_date = datetime.fromtimestamp(first_release_date)
@@ -339,6 +420,115 @@ class IGDBMetadataFetcher:
         db.session.commit()
         self.print_summary()
     
+    def fetch_details_for_existing(self, batch_size: int = 100):
+        """
+        Fetch detailed metadata for games that already have IGDB IDs
+        but are missing summary/rating/themes etc.
+        """
+        games = db.session.execute(
+            db.text("""
+                SELECT DISTINCT g.game_id, g.title, g.igdb_id
+                FROM games_master g
+                WHERE (
+                    EXISTS (SELECT 1 FROM owned_games_steam WHERE game_id = g.game_id)
+                    OR EXISTS (SELECT 1 FROM owned_games_epic WHERE game_id = g.game_id)
+                    OR EXISTS (SELECT 1 FROM owned_games_gog WHERE game_id = g.game_id)
+                )
+                AND g.igdb_id IS NOT NULL
+                AND g.summary IS NULL
+                ORDER BY g.title
+            """)
+        ).fetchall()
+
+        self.stats["total_games"] = len(games)
+        self.log(f"Found {len(games)} owned games with IGDB IDs but missing details")
+
+        if not games:
+            self.log("All games already have full details!")
+            return
+
+        for i, (game_id, title, igdb_id) in enumerate(games, 1):
+            try:
+                self.log(f"[{i}/{len(games)}] Fetching details: {title} (IGDB: {igdb_id})")
+
+                game = db.session.get(GameMaster, game_id)
+                if not game:
+                    continue
+
+                # Fetch by IGDB ID directly (no fuzzy matching needed)
+                result = self.igdb.get_game_by_igdb_id(igdb_id)
+
+                if not result:
+                    self.log(f"  ⚠️  No data returned from IGDB", "WARN")
+                    self.stats["failed"] += 1
+                    continue
+
+                # Extract details
+                summary = result.get("summary")
+                rating = result.get("rating")
+                total_rating = result.get("total_rating")
+                total_rating_count = result.get("total_rating_count")
+                themes = result.get("themes", [])
+                game_modes = result.get("game_modes", [])
+                involved_companies = result.get("involved_companies", [])
+                genres = result.get("genres", [])
+
+                # Format fields
+                themes_str = ", ".join([t.get("name", "") for t in themes]) if isinstance(themes, list) else None
+                game_modes_str = ", ".join([m.get("name", "") for m in game_modes]) if isinstance(game_modes, list) else None
+                genres_str = ", ".join([g.get("name", "") for g in genres]) if isinstance(genres, list) else None
+
+                developers_list = []
+                publishers_list = []
+                if isinstance(involved_companies, list):
+                    for ic in involved_companies:
+                        company_name = ic.get("company", {}).get("name", "") if isinstance(ic.get("company"), dict) else ""
+                        if company_name:
+                            if ic.get("developer"):
+                                developers_list.append(company_name)
+                            if ic.get("publisher"):
+                                publishers_list.append(company_name)
+
+                # Update game
+                game.summary = summary
+                game.rating = round(rating, 1) if rating else None
+                game.total_rating = round(total_rating, 1) if total_rating else None
+                game.total_rating_count = total_rating_count
+                game.themes = themes_str
+                game.game_modes = game_modes_str
+                game.developers = ", ".join(developers_list) if developers_list else None
+                game.publishers = ", ".join(publishers_list) if publishers_list else None
+
+                # Update genres if missing
+                if not game.genres and genres_str:
+                    game.genres = genres_str
+
+                # Update cover if missing
+                cover_data = result.get("cover")
+                if not game.cover_url and cover_data:
+                    cover_id = cover_data.get("url") if isinstance(cover_data, dict) else cover_data
+                    if cover_id:
+                        if cover_id.startswith("//"):
+                            game.cover_url = f"https:{cover_id}".replace("t_thumb", "t_1080p").replace("t_cover_big", "t_1080p")
+                        elif cover_id.startswith("http"):
+                            game.cover_url = cover_id.replace("t_thumb", "t_1080p").replace("t_cover_big", "t_1080p")
+
+                db.session.add(game)
+                self.stats["updated"] += 1
+                self.log(f"  ✅ Updated details")
+
+                if i % batch_size == 0:
+                    db.session.commit()
+                    self.log(f"Committed {i} games...")
+
+            except Exception as e:
+                self.log(f"  ❌ Error: {e}", "ERROR")
+                self.stats["failed"] += 1
+                db.session.rollback()
+
+        db.session.commit()
+        self.print_summary()
+
     def print_summary(self):
         """Print results summary."""
         print("\n" + "="*80)
@@ -360,7 +550,13 @@ class IGDBMetadataFetcher:
 if __name__ == "__main__":
     try:
         fetcher = IGDBMetadataFetcher()
-        fetcher.fetch_and_update()
+        
+        if "--details" in sys.argv:
+            # Fetch details for games that already have IGDB IDs
+            fetcher.fetch_details_for_existing()
+        else:
+            # Fetch covers + details for games without IGDB IDs
+            fetcher.fetch_and_update()
     except ValueError as e:
         print(f"❌ Error: {e}")
         print("\nMake sure your .env file has:")

@@ -1,0 +1,132 @@
+<div class="flex flex-col md:flex-row gap-6">
+    <!-- Cover Art -->
+    <div class="flex-shrink-0 w-full md:w-48">
+        {% if game.cover_url %}
+            <img 
+                src="{{ game.cover_url }}" 
+                alt="{{ game.title }}"
+                class="w-full rounded-lg shadow-lg border border-cyan-500/20"
+            />
+        {% else %}
+            <div class="w-full h-64 rounded-lg bg-gray-800 flex items-center justify-center text-gray-600 text-5xl border border-cyan-500/20">
+                🎮
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Details -->
+    <div class="flex-1 min-w-0">
+        <h2 class="text-2xl font-bold text-white mb-1">{{ game.title }}</h2>
+        
+        <!-- Developer / Publisher -->
+        {% if game.developers or game.publishers %}
+        <div class="text-sm text-gray-400 mb-4">
+            {% if game.developers %}
+                <span class="text-cyan-400">{{ game.developers }}</span>
+            {% endif %}
+            {% if game.developers and game.publishers %} · {% endif %}
+            {% if game.publishers %}
+                Published by {{ game.publishers }}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Rating Bar -->
+        {% if game.total_rating %}
+        <div class="mb-4">
+            <div class="flex items-center gap-3 mb-1">
+                <span class="text-sm font-semibold 
+                    {% if game.total_rating >= 75 %}text-green-400
+                    {% elif game.total_rating >= 50 %}text-yellow-400
+                    {% else %}text-red-400{% endif %}">
+                    {{ game.total_rating | round(0) | int }}
+                </span>
+                <div class="flex-1 h-2 rounded-full bg-gray-700 overflow-hidden">
+                    <div 
+                        class="h-full rounded-full transition-all
+                            {% if game.total_rating >= 75 %}bg-gradient-to-r from-green-500 to-emerald-400
+                            {% elif game.total_rating >= 50 %}bg-gradient-to-r from-yellow-500 to-amber-400
+                            {% else %}bg-gradient-to-r from-red-500 to-orange-400{% endif %}"
+                        style="width: {{ game.total_rating }}%"
+                    ></div>
+                </div>
+                {% if game.total_rating_count %}
+                <span class="text-xs text-gray-500">{{ game.total_rating_count }} ratings</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Tags Row -->
+        <div class="flex flex-wrap gap-2 mb-4">
+            {% if game.genres %}
+                {% for genre in game.genres.split(', ') %}
+                <span class="px-2 py-1 rounded-full text-xs font-medium bg-purple-500/20 text-purple-300 border border-purple-500/30">{{ genre }}</span>
+                {% endfor %}
+            {% endif %}
+            {% if is_on_gfn %}
+                <span class="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-300 border border-green-500/30">☁️ GeForce NOW</span>
+            {% endif %}
+        </div>
+
+        <!-- Game Modes & Themes -->
+        {% if game.game_modes or game.themes %}
+        <div class="flex flex-wrap gap-2 mb-4">
+            {% if game.game_modes %}
+                {% for mode in game.game_modes.split(', ') %}
+                <span class="px-2 py-1 rounded-full text-xs font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">🎮 {{ mode }}</span>
+                {% endfor %}
+            {% endif %}
+            {% if game.themes %}
+                {% for theme in game.themes.split(', ')[:5] %}
+                <span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-700 text-gray-300 border border-gray-600">{{ theme }}</span>
+                {% endfor %}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Summary -->
+        {% if game.summary %}
+        <div class="mb-4">
+            <h3 class="text-sm font-semibold text-gray-400 mb-2">About</h3>
+            <p class="text-sm text-gray-300 leading-relaxed">{{ game.summary }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Platforms Owned On -->
+        {% if platforms %}
+        <div class="mb-4">
+            <h3 class="text-sm font-semibold text-gray-400 mb-2">Owned On</h3>
+            <div class="flex flex-wrap gap-2">
+                {% for platform_name, account_username in platforms %}
+                <span class="px-3 py-1 rounded-lg text-xs font-medium 
+                    {% if platform_name == 'Steam' %}bg-blue-500/20 text-blue-400 border border-blue-500/30
+                    {% elif platform_name == 'Epic' %}bg-purple-500/20 text-purple-400 border border-purple-500/30
+                    {% elif platform_name == 'GOG' %}bg-yellow-500/20 text-yellow-400 border border-yellow-500/30
+                    {% else %}bg-gray-700 text-gray-300{% endif %}">
+                    {{ platform_name }} · {{ account_username }}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Release Date -->
+        {% if game.first_release_date %}
+        <div class="text-xs text-gray-500 mb-4">
+            📅 Released: {{ game.first_release_date.strftime('%B %d, %Y') if game.first_release_date else 'Unknown' }}
+        </div>
+        {% endif %}
+
+        <!-- Launch on GFN -->
+        {% if is_on_gfn %}
+        <a 
+            href="{{ gfn_url or 'https://play.geforcenow.com/mall/#/layout/games' }}" 
+            target="_blank"
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white transition-all hover:shadow-lg hover:shadow-green-500/30"
+        >
+            ☁️ Launch on GeForce NOW
+        </a>
+        {% endif %}
+    </div>
+</div>

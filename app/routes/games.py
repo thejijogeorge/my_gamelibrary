@@ -4,6 +4,7 @@ Games routes — display owned games with filtering.
 
 from flask import Blueprint, render_template, request, jsonify
 from app import db
+from app.models import GameMaster
 
 games_bp = Blueprint("games", __name__)
 
@@ -133,3 +134,40 @@ def api_stats():
         ).scalar(),
     }
     return jsonify(stats)
+
+
+@games_bp.route("/game/<int:game_id>")
+def game_detail(game_id):
+    """Return game detail HTML partial for the info modal."""
+    game = db.session.query(GameMaster).filter(
+        GameMaster.game_id == game_id
+    ).first()
+
+    if not game:
+        return '<div class="p-6 text-center text-gray-400">Game not found.</div>'
+
+    # Check GFN status
+    gfn_result = db.session.execute(
+        db.text("SELECT gfn_url FROM gfn_games WHERE game_id = :gid"),
+        {"gid": game_id},
+    ).fetchone()
+    is_on_gfn = gfn_result is not None
+    gfn_url = gfn_result[0] if gfn_result else None
+
+    # Platforms this game is owned on
+    platforms = db.session.execute(
+        db.text("""
+            SELECT DISTINCT platform_name, account_username 
+            FROM vw_owned_games_unified 
+            WHERE game_id = :gid
+        """),
+        {"gid": game_id},
+    ).fetchall()
+
+    return render_template(
+        "_game_detail.html",
+        game=game,
+        is_on_gfn=is_on_gfn,
+        gfn_url=gfn_url,
+        platforms=platforms,
+    )

@@ -59,17 +59,16 @@
                     <td class="px-6 py-4 text-right">
                         <div class="flex gap-2 justify-end">
                             {% if game.is_on_gfn %}
-                            <a 
-                                href="{{ game.gfn_deeplink_url or 'https://play.geforcenow.com/mall/#/layout/games' }}" 
-                                target="_blank"
-                                class="px-3 py-1 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors"
+                            <button 
+                                onclick="launchGFN('{{ game.gfn_deeplink_url or '' }}')"
+                                class="px-3 py-1 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors cursor-pointer"
                             >
                                 ☁️ Launch
-                            </a>
+                            </button>
                             {% endif %}
                             <button 
                                 class="px-3 py-1 rounded-lg text-xs font-semibold bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
-                                onclick="alert('More details coming soon!')"
+                                onclick="openGameModal({{ game.game_id }})"
                             >
                                 Info
                             </button>

@@ -112,6 +112,26 @@ def fetch_covers():
 
 # ── Populate GFN URLs ────────────────────────────────────────
 
+@admin_bp.route("/fetch-details", methods=["POST"])
+def fetch_details():
+    """Fetch game details (summary, rating, themes) for games that already have covers."""
+    task_id = uuid.uuid4().hex[:12]
+    _tasks[task_id] = {"type": "details", "status": "starting"}
+
+    thread = threading.Thread(
+        target=_run_script_background,
+        args=(task_id, ["scripts/fetch_igdb_metadata.py", "--details"], current_app._get_current_object()),
+        daemon=True,
+    )
+    thread.start()
+
+    return _render_status(
+        "running",
+        "Fetching game details (summary, ratings, themes) from IGDB...",
+        task_id=task_id,
+    )
+
+
 @admin_bp.route("/populate-gfn", methods=["POST"])
 def populate_gfn():
     """Populate GFN launch URLs for all GFN games."""
