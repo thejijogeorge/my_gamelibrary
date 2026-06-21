@@ -243,3 +243,102 @@ def toggle_gfn(game_id):
         is_on_gfn=is_on_gfn,
         gfn_url=gfn_url,
     )
+
+
+@games_bp.route("/game/<int:game_id>/refresh-igdb", methods=["POST"])
+def refresh_igdb(game_id):
+    """Refresh a single game's IGDB details (manual update from modal)."""
+    from scripts.fetch_igdb_metadata import IGDBMetadataFetcher
+    from datetime import datetime
+    
+    game = db.session.query(GameMaster).filter(
+        GameMaster.game_id == game_id
+    ).first()
+
+    if not game:
+        return '<span class="text-red-400 text-xs">Game not found</span>', 404
+
+    # If no IGDB ID yet, search by title first
+    if not game.igdb_id:
+        try:
+            fetcher = IGDBMetadataFetcher()
+            results = fetcher.search_games(game.title, limit=1)
+            if results:
+                game.igdb_id = results[0]["id"]
+            else:
+                return '<span class="text-yellow-400 text-xs">⚠️ No IGDB match found for: ' + game.title + '</span>'
+        except Exception as e:
+            return f'<span class="text-red-400 text-xs">⚠️ Error searching IGDB: {str(e)}</span>'
+
+    # Fetch details from IGDB by ID
+    try:
+        fetcher = IGDBMetadataFetcher()
+        igdb_game = fetcher.get_game_by_igdb_id(game.igdb_id)
+        
+        if not igdb_game:
+            return '<span class="text-yellow-400 text-xs">⚠️ Game not found on IGDB</span>'
+
+        # Update game with fresh data
+        game.title = igdb_game.get("name", game.title)
+        
+        # Cover art
+        if igdb_game.get("cover"):
+            cover_id = igdb_game["cover"].get("url", "").split("/")[-1].split(".")[0]
+            if cover_id:
+                game.cover_url = f"https://images.igdb.com/igdb/image/upload/t_1080p/{cover_id}.jpg"
+
+        # Ratings
+        game.rating = igdb_game.get("rating")
+        game.total_rating = igdb_game.get("total_rating")
+        game.total_rating_count = igdb_game.get("total_rating_count")
+
+        # Release date
+        first_release = igdb_game.get("first_release_date")
+        if first_release:
+            game.first_release_date = datetime.fromtimestamp(first_release)
+
+        # Summary
+        game.summary = igdb_game.get("summary")
+
+        # Genres, themes, game modes
+        if igdb_game.get("genres"):
+            game.genres = ", ".join([g.get("name", "") for g in igdb_game["genres"]])
+        if igdb_game.get("themes"):
+            game.themes = ", ".join([t.get("name", "") for t in igdb_game["themes"]])
+        if igdb_game.get("game_modes"):
+            game.game_modes = ", ".join([m.get("name", "") for m in igdb_game["game_modes"]])
+
+        # Developers & Publishers
+        devs, pubs = [], []
+        for ic in igdb_game.get("involved_companies", []):
+            name = ic.get("company", {}).get("name", "")
+            if ic.get("developer"):
+                devs.append(name)
+            if ic.get("publisher"):
+                pubs.append(name)
+        if devs:
+            game.developers = ", ".join(devs)
+        if pubs:
+            game.publishers = ", ".join(pubs)
+
+        db.session.commit()
+
+        return render_template(
+            "_game_detail.html",
+            game=game,
+            is_on_gfn=db.session.query(GfnGame).filter_by(game_id=game_id).first() is not None,
+            gfn_url=db.session.query(GfnGame).filter_by(game_id=game_id).first().gfn_url 
+                    if db.session.query(GfnGame).filter_by(game_id=game_id).first() else None,
+            platforms=db.session.execute(
+                db.text("""
+                    SELECT DISTINCT platform_name, account_username
+                    FROM vw_owned_games_unified
+                    WHERE game_id = :gid
+                """),
+                {"gid": game_id},
+            ).fetchall(),
+            refresh_success=True
+        )
+
+    except Exception as e:
+        return f'<span class="text-red-400 text-xs">⚠️ Error: {str(e)}</span>'

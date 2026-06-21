@@ -105,13 +105,15 @@ class IGDBClient:
         """
         self._handle_rate_limit()
         
-        # Build IGDB query
+        # Build IGDB query with PC platform filter
         igdb_query = f"""
             search "{query}";
             fields id, name, cover.url, genres.name, first_release_date,
                    summary, rating, total_rating, total_rating_count,
                    themes.name, game_modes.name,
-                   involved_companies.company.name, involved_companies.developer, involved_companies.publisher;
+                   involved_companies.company.name, involved_companies.developer, involved_companies.publisher,
+                   platforms.name;
+            where platforms = (6);
             limit {limit};
         """
         
@@ -162,8 +164,9 @@ class IGDBClient:
             fields id, name, cover.url, genres.name, first_release_date,
                    summary, rating, total_rating, total_rating_count,
                    themes.name, game_modes.name,
-                   involved_companies.company.name, involved_companies.developer, involved_companies.publisher;
-            where id = {igdb_id};
+                   involved_companies.company.name, involved_companies.developer, involved_companies.publisher,
+                   platforms.name;
+            where id = {igdb_id} & platforms = (6);
             limit 1;
         """
         
@@ -260,12 +263,12 @@ class IGDBMetadataFetcher:
     
     def fetch_and_update(self, batch_size: int = 100):
         """
-        Fetch metadata for games user actually owns (Steam, Epic, GOG).
+        Fetch metadata for games user actually owns (all 7 storefronts).
         
         Args:
             batch_size: Process this many games before committing
         """
-        # Only get games that are in owned_games tables (Steam, Epic, GOG)
+        # Only get games that are in owned_games tables (Steam, Epic, GOG, EA, Battle.net, Ubisoft)
         # NOT the entire GFN catalog
         games = db.session.execute(
             db.text("""
@@ -275,6 +278,9 @@ class IGDBMetadataFetcher:
                     EXISTS (SELECT 1 FROM owned_games_steam WHERE game_id = g.game_id)
                     OR EXISTS (SELECT 1 FROM owned_games_epic WHERE game_id = g.game_id)
                     OR EXISTS (SELECT 1 FROM owned_games_gog WHERE game_id = g.game_id)
+                    OR EXISTS (SELECT 1 FROM owned_games_ea WHERE game_id = g.game_id)
+                    OR EXISTS (SELECT 1 FROM owned_games_battlenet WHERE game_id = g.game_id)
+                    OR EXISTS (SELECT 1 FROM owned_games_ubisoft WHERE game_id = g.game_id)
                 )
                 AND g.igdb_id IS NULL
                 ORDER BY g.title
@@ -433,6 +439,9 @@ class IGDBMetadataFetcher:
                     EXISTS (SELECT 1 FROM owned_games_steam WHERE game_id = g.game_id)
                     OR EXISTS (SELECT 1 FROM owned_games_epic WHERE game_id = g.game_id)
                     OR EXISTS (SELECT 1 FROM owned_games_gog WHERE game_id = g.game_id)
+                    OR EXISTS (SELECT 1 FROM owned_games_ea WHERE game_id = g.game_id)
+                    OR EXISTS (SELECT 1 FROM owned_games_battlenet WHERE game_id = g.game_id)
+                    OR EXISTS (SELECT 1 FROM owned_games_ubisoft WHERE game_id = g.game_id)
                 )
                 AND g.igdb_id IS NOT NULL
                 AND g.summary IS NULL

@@ -73,7 +73,7 @@ All tasks run in the background — status updates appear in real-time! 🎮
 ## 📊 Features
 
 ### **Core**
-- ✅ Multi-platform game aggregator — Steam, Epic Games, GOG
+- ✅ Multi-platform game aggregator — **7 storefronts**: Steam, Epic Games, GOG, EA, Battle.net, Ubisoft
 - ✅ Beautiful cover art — High-resolution (t_1080p) from IGDB
 - ✅ Real-time filtering — Search, filter by platform/account/status
 - ✅ Grid & list views — Choose your preferred layout
@@ -122,11 +122,20 @@ Your Excel file should have **3 columns** in the first sheet:
 | Cyberpunk 2077 | Epic | Geekstradamus01 |
 | The Witcher 3 | GOG | jijo_george |
 | Elden Ring | Steam | jijo_george_max |
+| Starfield | EA | myeaaccount |
+| Overwatch 2 | Battle.net | MyBattleTag |
+| Assassin's Creed | Ubisoft | myubisoftname |
 
 ### **Column Details:**
 
 - **Game Name**: Exact game title (used to match against IGDB)
-- **Storefront**: One of: `Steam`, `Epic`, `Epic Games`, `GOG`, `GOG.com`
+- **Storefront**: One of:
+  - `Steam`
+  - `Epic` / `Epic Games` / `Epic Games Store`
+  - `GOG` / `GOG.com`
+  - `EA` / `EA Play` / `Origin`
+  - `Battle.net` / `Battlenet` / `Blizzard`
+  - `Ubisoft` / `Ubisoft Connect` / `Uplay`
 - **Gamer ID**: Your account username on that storefront
 
 ### **Example Excel Setup:**
@@ -425,6 +434,7 @@ docker push thejijogeorge/gamelibrary-web:2.2.0
 
 | Version | Features |
 |---------|----------|
+| **2.3.0** | Added EA, Battle.net, and Ubisoft storefronts (7 total platforms) |
 | **2.2.0** | Status tracking (Not Started/Started/Completed), GFN toggle per game, sort options (Name/Rating/Release/Status), simplified 3-column Excel import |
 | **2.1.0** | Game info modal with details (summary, rating, genres, themes, devs), game detail fetching |
 | **2.0.0** | Admin panel, Excel upload via UI, cover art button, GFN UUID assignment, GFN launch buttons |

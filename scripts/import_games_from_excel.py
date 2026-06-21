@@ -27,7 +27,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import create_app, db
 from app.models import (
     Platform, Account, GameMaster,
-    OwnedGameSteam, OwnedGameEpic, OwnedGameGog, GfnGame,
+    OwnedGameSteam, OwnedGameEpic, OwnedGameGog, 
+    OwnedGameEA, OwnedGameBattlenet, OwnedGameUbisoft,
+    GfnGame,
 )
 
 
@@ -38,6 +40,15 @@ STOREFRONT_MAP = {
     "epic games store": "Epic",
     "gog": "GOG",
     "gog.com": "GOG",
+    "ea": "EA",
+    "ea play": "EA",
+    "origin": "EA",
+    "battle.net": "Battle.net",
+    "battlenet": "Battle.net",
+    "blizzard": "Battle.net",
+    "ubisoft": "Ubisoft",
+    "ubisoft connect": "Ubisoft",
+    "uplay": "Ubisoft",
 }
 
 
@@ -112,7 +123,7 @@ class GameImporter:
             db.session.add(OwnedGameSteam(
                 account_id=account.account_id,
                 game_id=game.game_id,
-                steam_appid=game.game_id,  # placeholder
+                steam_appid=game.game_id,
                 playtime_minutes=0,
             ))
 
@@ -139,6 +150,43 @@ class GameImporter:
                 game_id=game.game_id,
                 gog_product_id=str(game.game_id),
             ))
+
+        elif storefront_name == "EA":
+            existing = db.session.query(OwnedGameEA).filter_by(
+                account_id=account.account_id, game_id=game.game_id
+            ).first()
+            if existing:
+                return False
+            db.session.add(OwnedGameEA(
+                account_id=account.account_id,
+                game_id=game.game_id,
+                ea_game_id=str(game.game_id),
+            ))
+
+        elif storefront_name == "Battle.net":
+            existing = db.session.query(OwnedGameBattlenet).filter_by(
+                account_id=account.account_id, game_id=game.game_id
+            ).first()
+            if existing:
+                return False
+            db.session.add(OwnedGameBattlenet(
+                account_id=account.account_id,
+                game_id=game.game_id,
+                battlenet_game_id=str(game.game_id),
+            ))
+
+        elif storefront_name == "Ubisoft":
+            existing = db.session.query(OwnedGameUbisoft).filter_by(
+                account_id=account.account_id, game_id=game.game_id
+            ).first()
+            if existing:
+                return False
+            db.session.add(OwnedGameUbisoft(
+                account_id=account.account_id,
+                game_id=game.game_id,
+                ubisoft_game_id=str(game.game_id),
+            ))
+
         else:
             return False
 

@@ -122,6 +122,54 @@ class OwnedGameGog(db.Model):
     game = db.relationship("GameMaster")
 
 
+class OwnedGameEA(db.Model):
+    __tablename__ = "owned_games_ea"
+    __table_args__ = (
+        db.UniqueConstraint("account_id", "ea_game_id", name="uq_ea_account_game"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey("accounts.account_id"), nullable=False)
+    game_id = db.Column(db.Integer, db.ForeignKey("games_master.game_id"), nullable=True)
+    ea_game_id = db.Column(db.String(100), nullable=False)
+    added_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    account = db.relationship("Account")
+    game = db.relationship("GameMaster")
+
+
+class OwnedGameBattlenet(db.Model):
+    __tablename__ = "owned_games_battlenet"
+    __table_args__ = (
+        db.UniqueConstraint("account_id", "battlenet_game_id", name="uq_battlenet_account_game"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey("accounts.account_id"), nullable=False)
+    game_id = db.Column(db.Integer, db.ForeignKey("games_master.game_id"), nullable=True)
+    battlenet_game_id = db.Column(db.String(100), nullable=False)
+    added_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    account = db.relationship("Account")
+    game = db.relationship("GameMaster")
+
+
+class OwnedGameUbisoft(db.Model):
+    __tablename__ = "owned_games_ubisoft"
+    __table_args__ = (
+        db.UniqueConstraint("account_id", "ubisoft_game_id", name="uq_ubisoft_account_game"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey("accounts.account_id"), nullable=False)
+    game_id = db.Column(db.Integer, db.ForeignKey("games_master.game_id"), nullable=True)
+    ubisoft_game_id = db.Column(db.String(100), nullable=False)
+    added_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    account = db.relationship("Account")
+    game = db.relationship("GameMaster")
+
+
 class GfnGame(db.Model):
     """Full GeForce Now catalog. One row per game, with flags for which
     storefront(s) carry the GFN-playable version, plus the deep link to
