@@ -1,12 +1,12 @@
 # Game Library — Server Deployment Guide
 
-A personal game aggregator that pulls games from Steam, Epic Games, and GOG with GeForce NOW streaming integration. Deploy to your own server with Docker.
+A personal game aggregator that pulls games from Steam, Epic Games, and GOG with GeForce NOW streaming integration, game status tracking, and sorting/filtering options. Deploy to your own server with Docker.
 
 ## 📋 Prerequisites
 
 - **Docker & Docker Compose** installed on your server
 - **IGDB API credentials** (Twitch Client ID & Secret) — [Get them free](https://dev.twitch.tv/console/apps)
-- **Game library Excel file** (from local export)
+- **Game library Excel file** (in the format specified below)
 - Server with at least **2GB RAM** and **5GB storage**
 
 ---
@@ -62,8 +62,9 @@ http://your-server-ip:5000
 
 1. Click the **⚙️ Admin** button in the top-right
 2. **Upload your Excel file** under "📤 Import Games"
-3. Click **"Fetch Missing Covers"** under "🖼️ Cover Art"
-4. Click **"Populate GFN URLs"** under "☁️ GeForce NOW"
+3. Click **"Fetch Missing Covers"** under "🖼️ Cover Art & Details"
+4. Click **"Fetch Game Details"** to get summaries, ratings, themes, etc.
+5. Click **"Populate GFN URLs"** under "☁️ GeForce NOW"
 
 All tasks run in the background — status updates appear in real-time! 🎮
 
@@ -74,55 +75,162 @@ All tasks run in the background — status updates appear in real-time! 🎮
 ### **Core**
 - ✅ Multi-platform game aggregator — Steam, Epic Games, GOG
 - ✅ Beautiful cover art — High-resolution (t_1080p) from IGDB
-- ✅ Real-time filtering — Search, filter by platform/account
+- ✅ Real-time filtering — Search, filter by platform/account/status
 - ✅ Grid & list views — Choose your preferred layout
 - ✅ Responsive design — Works on mobile & desktop
 - ✅ Dark gamer theme — Glassmorphism UI with neon accents
 
+### **Game Tracking**
+- ✅ **Status tracking** — Track games as: Not Started, Started, Completed
+- ✅ **Status filter** — Show only games by status (great for backlog management!)
+- ✅ **Quick status change** — Click Info → dropdown to update instantly from the modal
+- ✅ **Status badges** — Visual indicators on every game card
+
 ### **Admin Panel (⚙️)**
-- ✅ Upload Excel via browser — No more manual CLI imports
+- ✅ Upload Excel via browser — Simple 3-column format, no more manual CLI imports
 - ✅ One-click cover art fetch — Pulls covers from IGDB automatically
+- ✅ Fetch game details — Summaries, ratings (0-100), themes, game modes, developers/publishers
 - ✅ GFN URL population — Sets launch URLs for all GFN-available games
-- ✅ GFN UUID assignment — Search any game and paste its real GFN deep link UUID
+- ✅ GFN toggle per game — Enable/disable GeForce NOW availability directly in the Info modal
+- ✅ Remove duplicates — Cleans up duplicate game+storefront+gamerID combinations
+
+### **Sorting & Filtering**
+- ✅ **Filter by**: Platform, Account, Status, GFN availability
+- ✅ **Search**: Real-time game name search
+- ✅ **Sort by**: 
+  - Name (A-Z)
+  - Rating (High to Low)
+  - Release Date (Newest)
+  - Status
 
 ### **GeForce NOW Integration (☁️)**
-- ✅ Launch on GFN buttons — Every GFN-available game has a launch button
+- ✅ Enable/disable GFN per game in the modal
+- ✅ Launch on GFN buttons — Every GFN-enabled game has a launch button
 - ✅ Direct deep links — Games with assigned UUIDs launch directly into GFN
 - ✅ Fallback support — Games without UUIDs open the GFN web app
+- ✅ GFN-only filter — Show only games available on GeForce NOW
 
 ---
 
-## ⚙️ Admin Panel Guide
+## 📥 Game Import Format
+
+Your Excel file should have **3 columns** in the first sheet:
+
+| Game Name | Storefront | Gamer ID |
+|-----------|-----------|----------|
+| Baldur's Gate 3 | Steam | jijo_george_max |
+| Cyberpunk 2077 | Epic | Geekstradamus01 |
+| The Witcher 3 | GOG | jijo_george |
+| Elden Ring | Steam | jijo_george_max |
+
+### **Column Details:**
+
+- **Game Name**: Exact game title (used to match against IGDB)
+- **Storefront**: One of: `Steam`, `Epic`, `Epic Games`, `GOG`, `GOG.com`
+- **Gamer ID**: Your account username on that storefront
+
+### **Example Excel Setup:**
+
+```
+Row 1:  Game Name | Storefront | Gamer ID
+Row 2:  Hades | Steam | mysteamname
+Row 3:  Fortnite | Epic | myepicusername
+Row 4:  Baldur's Gate 3 | GOG | mygogusername
+```
+
+**Optional**: Include a "GeForce NOW Catalog" sheet with columns `No.`, `Title`, `Publisher`, `Available Store(s)` for GFN catalog data (same format as before).
+
+### **Import Safety:**
+
+- **Re-importing is safe** — existing games are detected and skipped
+- **No duplicates** — same game+storefront+gamerID won't be added twice
+- **Automatic deduplication** — use the "Remove Duplicates" button to clean up
+
+---
+
+## 🎮 Admin Panel Guide
 
 Click the **⚙️ Admin** button in the header to open the management panel.
 
 ### **📤 Import Games**
 
-Upload your game library Excel file (`.xlsx`) directly from the browser. The import script runs in the background and shows progress in real-time.
+Upload your 3-column Excel file directly from the browser. The import script runs in the background with **live progress updates**:
 
-### **🖼️ Cover Art**
+```
+[123/500] Importing: Baldur's Gate 3 (Steam/myaccount)
+  ✅ Added
+[124/500] Importing: Cyberpunk 2077 (Epic/myaccount)
+  ✅ Added
+```
 
-Click "Fetch Missing Covers" to pull high-res game covers from IGDB for any games without cover art. Requires IGDB credentials in `.env`.
+### **🖼️ Cover Art & Details**
+
+Two buttons for different scenarios:
+
+- **"Fetch Missing Covers"** — Games with NO IGDB data → searches by title, gets covers + all metadata
+- **"Fetch Game Details"** — Games that already have covers → fills in summary, ratings, themes, etc.
+
+Both support **live progress** so you know what's being processed.
 
 ### **☁️ GeForce NOW URLs**
 
 Click "Populate GFN URLs" to set launch URLs for all games in the GFN catalog. Games get a fallback URL to the GFN web app by default.
 
-### **🎯 Assign GFN Deep Links**
+Click **"Remove Duplicates"** to clean up any duplicate game+storefront+gamerID combinations.
 
-For direct game launching on GeForce NOW:
+### **🎯 Enable/Disable GFN Per Game**
 
-1. Go to [play.geforcenow.com](https://play.geforcenow.com)
-2. Find a game and click it
-3. Copy the `game-id` UUID from the browser URL bar
-   ```
-   Example URL: https://play.geforcenow.com/games?game-id=81810b31-1b34-4921-8ab3-c6c3485fe4ce
-   Copy this:    81810b31-1b34-4921-8ab3-c6c3485fe4ce
-   ```
-4. In the admin panel, search for the game under "Assign GFN Deep Link"
-5. Paste the UUID and click **Save**
+In the game's **Info modal** (click the Info button):
 
-The game's "Launch on GFN" button will now open it directly in GeForce NOW! 🚀
+```
+GeForce NOW:  [toggle switch]  Enabled/Disabled    [☁️ Launch]
+```
+
+- **Toggle ON** → game appears in GFN-only filter, shows launch button
+- **Toggle OFF** → game removed from GFN listings
+
+Great for marking games as GFN-playable without using the admin bulk tools!
+
+---
+
+## 🔄 Game Status Tracking
+
+Every game has a **Status** field: **Not Started**, **Started**, or **Completed**.
+
+### **Set Status:**
+
+1. Click **Info** on any game
+2. Use the **Status** dropdown to select:
+   - **⏸️ Not Started** — Haven't played yet (default for new imports)
+   - **🎮 Started** — Currently playing
+   - **✅ Completed** — Finished
+
+### **Filter by Status:**
+
+Use the **Status** filter in the main filter bar to show only games in a specific state. Perfect for:
+- Viewing your **backlog** (Not Started)
+- Seeing what you're **actively playing** (Started)
+- Celebrating **finished games** (Completed)
+
+### **Status Badges:**
+
+Games display status badges on their cards:
+- **Gray** — Not Started
+- **Yellow** — Started
+- **Green** — Completed
+
+---
+
+## 🔀 Sorting Options
+
+Click the **"Sort By"** dropdown to organize your library:
+
+| Option | Behavior |
+|--------|----------|
+| **Name (A-Z)** | Alphabetical order |
+| **Rating (High-Low)** | Games sorted by IGDB user ratings (100 = highest) |
+| **Release Date (Newest)** | Most recent releases first |
+| **Status** | Groups by status (Not Started → Started → Completed) |
 
 ---
 
@@ -134,18 +242,20 @@ my_gamelibrary/
 ├── .env                        ← Your credentials & secrets
 ├── app/
 │   ├── __init__.py             ← App factory with admin blueprint
-│   ├── models.py               ← Database models (GfnGame has gfn_game_id + gfn_url)
+│   ├── models.py               ← Database models (includes status column)
 │   ├── routes/
-│   │   ├── games.py            ← Game display & filtering routes
-│   │   └── admin.py            ← Admin panel routes (upload, covers, GFN)
+│   │   ├── games.py            ← Game display, filtering, sorting, status update
+│   │   └── admin.py            ← Admin panel routes (upload, covers, GFN toggle, dedup)
 │   ├── templates/
-│   │   ├── index.html          ← Main page with admin panel
+│   │   ├── index.html          ← Main page with admin panel & filters
 │   │   ├── _games_grid.html    ← Grid view partial
-│   │   └── _games_list.html    ← List view partial
+│   │   ├── _games_list.html    ← List view partial
+│   │   ├── _game_detail.html   ← Game info modal with status & GFN toggle
+│   │   └── _gfn_toggle.html    ← GFN enable/disable switch
 │   └── static/css/style.css    ← Gamer theme
 ├── scripts/
-│   ├── import_games_from_excel.py    ← Import from Excel
-│   ├── fetch_igdb_metadata.py        ← Fetch covers from IGDB
+│   ├── import_games_from_excel.py    ← Import from simplified Excel
+│   ├── fetch_igdb_metadata.py        ← Fetch covers & details from IGDB
 │   ├── populate_gfn_game_ids.py      ← Set GFN launch URLs
 │   ├── deduplicate_games.py          ← Remove duplicate entries
 │   └── clear_cover_urls.py           ← Clear covers for re-fetch
@@ -176,6 +286,12 @@ sudo docker compose exec db psql -U gameapp -d gamelibrary
 ```bash
 sudo docker compose exec db psql -U gameapp -d gamelibrary \
   -c "SELECT COUNT(*) FROM vw_owned_games_unified;"
+```
+
+### **Check Games by Status**
+```bash
+sudo docker compose exec db psql -U gameapp -d gamelibrary \
+  -c "SELECT status, COUNT(*) FROM games_master GROUP BY status;"
 ```
 
 ### **Remove Duplicate Games**
@@ -265,7 +381,7 @@ Tasks have a 10-minute timeout. If stuck:
 
 ### **Database stuck or corrupted**
 
-Nuke and restart:
+Nuke and restart (you'll lose all data):
 ```bash
 sudo docker compose down -v
 sudo docker compose up -d
@@ -296,11 +412,11 @@ sudo docker compose up -d
 
 ```bash
 # Build with dual tags
-docker build -t thejijogeorge/gamelibrary-web:latest -t thejijogeorge/gamelibrary-web:2.0.0 .
+docker build -t thejijogeorge/gamelibrary-web:latest -t thejijogeorge/gamelibrary-web:2.2.0 .
 
 # Push to Docker Hub
 docker push thejijogeorge/gamelibrary-web:latest
-docker push thejijogeorge/gamelibrary-web:2.0.0
+docker push thejijogeorge/gamelibrary-web:2.2.0
 ```
 
 ---
@@ -309,6 +425,8 @@ docker push thejijogeorge/gamelibrary-web:2.0.0
 
 | Version | Features |
 |---------|----------|
+| **2.2.0** | Status tracking (Not Started/Started/Completed), GFN toggle per game, sort options (Name/Rating/Release/Status), simplified 3-column Excel import |
+| **2.1.0** | Game info modal with details (summary, rating, genres, themes, devs), game detail fetching |
 | **2.0.0** | Admin panel, Excel upload via UI, cover art button, GFN UUID assignment, GFN launch buttons |
 | **1.0.0** | Initial release — game import, IGDB covers, grid/list view, htmx filtering |
 
@@ -322,7 +440,7 @@ Your game library is now running! Access it at:
 http://your-server-ip:5000
 ```
 
-Click ⚙️ Admin to manage your library right from the browser! ☁️✨
+Track your gaming progress, filter by status, sort by rating, and launch games on GeForce NOW — all from one beautiful dashboard! ☁️✨
 
 ---
 
