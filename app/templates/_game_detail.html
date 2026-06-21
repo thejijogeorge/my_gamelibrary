@@ -118,16 +118,10 @@
         </div>
         {% endif %}
 
-        <!-- Launch on GFN -->
-        {% if is_on_gfn %}
-        <a 
-            href="{{ gfn_url or 'https://play.geforcenow.com/mall/#/layout/games' }}" 
-            target="_blank"
-            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white transition-all hover:shadow-lg hover:shadow-green-500/30"
-        >
-            ☁️ Launch on GeForce NOW
-        </a>
-        {% endif %}
+        <!-- GeForce NOW Toggle -->
+        <div class="mb-4 p-3 rounded-lg bg-gray-800/50 border border-cyan-500/10">
+            {% include "_gfn_toggle.html" %}
+        </div>
 
         <!-- Status -->
         <div class="mt-4 pt-4 border-t border-cyan-500/20">

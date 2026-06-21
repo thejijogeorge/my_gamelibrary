@@ -4,7 +4,7 @@ Games routes — display owned games with filtering, sorting, status.
 
 from flask import Blueprint, render_template, request, jsonify
 from app import db
-from app.models import GameMaster
+from app.models import GameMaster, GfnGame
 
 games_bp = Blueprint("games", __name__)
 
@@ -204,3 +204,42 @@ def update_status(game_id):
     c = colors.get(new_status, "gray")
 
     return f'<span class="px-3 py-1 rounded-full text-xs font-bold bg-{c}-500/20 text-{c}-400 border border-{c}-500/30">{new_status}</span>'
+
+
+@games_bp.route("/game/<int:game_id>/gfn-toggle", methods=["POST"])
+def toggle_gfn(game_id):
+    """Enable or disable GeForce NOW availability for a game (htmx)."""
+    enable = request.form.get("enabled") == "true"
+
+    game = db.session.query(GameMaster).filter(
+        GameMaster.game_id == game_id
+    ).first()
+
+    if not game:
+        return '<span class="text-red-400 text-xs">Game not found</span>', 404
+
+    gfn = db.session.query(GfnGame).filter(GfnGame.game_id == game_id).first()
+
+    if enable:
+        if not gfn:
+            gfn = GfnGame(
+                game_id=game_id,
+                gfn_url="https://play.geforcenow.com/mall/#/layout/games",
+            )
+            db.session.add(gfn)
+        is_on_gfn = True
+        gfn_url = gfn.gfn_url
+    else:
+        if gfn:
+            db.session.delete(gfn)
+        is_on_gfn = False
+        gfn_url = None
+
+    db.session.commit()
+
+    return render_template(
+        "_gfn_toggle.html",
+        game=game,
+        is_on_gfn=is_on_gfn,
+        gfn_url=gfn_url,
+    )

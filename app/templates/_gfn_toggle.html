@@ -1,0 +1,28 @@
+<div id="gfn-toggle-{{ game.game_id }}" class="flex items-center gap-3">
+    <span class="text-sm font-semibold text-gray-400">GeForce NOW:</span>
+
+    <label class="relative inline-flex items-center cursor-pointer">
+        <input 
+            type="checkbox" 
+            class="sr-only peer"
+            {% if is_on_gfn %}checked{% endif %}
+            onclick="htmx.ajax('POST', '/game/{{ game.game_id }}/gfn-toggle', {target: '#gfn-toggle-{{ game.game_id }}', swap: 'outerHTML', values: {enabled: this.checked}})"
+        />
+        <div class="w-11 h-6 bg-gray-700 peer-checked:bg-green-600 rounded-full transition-colors"></div>
+        <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+    </label>
+
+    <span class="text-xs {% if is_on_gfn %}text-green-400{% else %}text-gray-500{% endif %}">
+        {% if is_on_gfn %}☁️ Enabled{% else %}Disabled{% endif %}
+    </span>
+
+    {% if is_on_gfn %}
+    <a 
+        href="{{ gfn_url or 'https://play.geforcenow.com/mall/#/layout/games' }}" 
+        target="_blank"
+        class="ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white transition-all"
+    >
+        ☁️ Launch
+    </a>
+    {% endif %}
+</div>
