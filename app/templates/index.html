@@ -297,7 +297,7 @@
         <!-- Games Container -->
         <div 
             id="games-container"
-            hx-get="/games?view={{ view }}&search={{ search }}&platform={{ platform_filter }}&account={{ account_filter }}&gfn_only={{ gfn_only }}"
+            hx-get="/games?view={{ view }}&search={{ search }}&platform={{ platform_filter }}&account={{ account_filter }}&gfn_only={{ gfn_only }}&status={{ status_filter }}&sort={{ sort }}"
             hx-trigger="load"
             class="min-h-96 flex items-center justify-center"
         >
@@ -373,11 +373,73 @@
         }
 
         /**
+         * Keep the address bar in sync with the current filters WITHOUT
+         * using hx-push-url.
+         *
+         * Why not hx-push-url: filter controls fetch from /games?... (the
+         * partial-HTML endpoint). hx-push-url="true" pushes that exact
+         * fetched URL into history. If the user then hits refresh (or
+         * shares/bookmarks the link), the browser does a full page load
+         * of /games?... directly — which returns only the bare grid/list
+         * fragment with no <html>/<head>/Tailwind/htmx, breaking all
+         * styling and structure.
+         *
+         * Instead, we let htmx fetch /games?... as normal (captured here
+         * via htmx:configRequest, which reliably exposes the final
+         * request path+params across htmx 1.9.x), but manually push
+         * "/?..." — same query string, pointed at the real page route —
+         * into history ourselves. A refresh then correctly hits "/",
+         * which renders the full page shell and re-fetches the fragment
+         * with the same filters intact.
+         */
+        document.body.addEventListener('htmx:configRequest', function(evt) {
+            const target = evt.detail.target;
+            if (!target || target.id !== 'games-container') return;
+
+            // evt.detail.path is the configured URL for the request, e.g.
+            // "/games" (filters via hx-include/parameters) or
+            // "/games?view=grid" (Grid/List buttons, hardcoded in the URL).
+            // Handle both: start from any query string already in path,
+            // then layer in form parameters (search/platform/etc).
+            const [routePath, existingQuery] = evt.detail.path.split('?');
+            if (routePath !== '/games') return;
+
+            const params = new URLSearchParams(existingQuery || '');
+            for (const [key, value] of Object.entries(evt.detail.parameters || {})) {
+                if (value !== '' && value !== null && value !== undefined) {
+                    params.set(key, value);
+                }
+            }
+
+            const query = params.toString();
+            const newUrl = '/' + (query ? '?' + query : '');
+            history.pushState({}, '', newUrl);
+        });
+
+        /**
          * Close game detail modal.
+         * Also refreshes the games grid behind it, since actions taken
+         * inside the modal (status change, GFN toggle, delete, IGDB
+         * refresh) update the database but don't touch the grid markup
+         * directly — without this, those changes only appeared after a
+         * manual page reload.
+         *
+         * We rebuild the request from the CURRENT browser URL (kept in
+         * sync via the htmx:configRequest handler above, which pushes
+         * "/?..." on every filter change) rather than relying on the
+         * games-container's original hx-get attribute, which would
+         * otherwise reset filters back to whatever they were on the
+         * last full page load.
          */
         function closeModal() {
             document.getElementById('game-modal').classList.add('hidden');
             document.body.style.overflow = '';
+
+            const params = new URLSearchParams(window.location.search);
+            htmx.ajax('GET', '/games?' + params.toString(), {
+                target: '#games-container',
+                swap: 'innerHTML'
+            });
         }
 
         // Close modal on Escape key
