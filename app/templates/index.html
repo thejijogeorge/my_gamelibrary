@@ -384,32 +384,59 @@
          * fragment with no <html>/<head>/Tailwind/htmx, breaking all
          * styling and structure.
          *
-         * Instead, we let htmx fetch /games?... as normal (captured here
-         * via htmx:configRequest, which reliably exposes the final
-         * request path+params across htmx 1.9.x), but manually push
-         * "/?..." — same query string, pointed at the real page route —
+         * Instead, we let htmx fetch /games?... as normal, but manually
+         * push "/?..." — same filters, pointed at the real page route —
          * into history ourselves. A refresh then correctly hits "/",
          * which renders the full page shell and re-fetches the fragment
          * with the same filters intact.
+         *
+         * We read filter values straight from the DOM (getCurrentFilterParams)
+         * rather than from htmx's evt.detail.parameters — in testing that
+         * sometimes handed back an array for a field (e.g. status as
+         * ["", "Not Started"]), which silently coerces to a comma-joined
+         * string like ",Not Started" when passed to URLSearchParams.set().
+         * Reading the inputs directly sidesteps htmx's internal
+         * serialization entirely and always matches what's on screen.
          */
+        function getCurrentFilterParams() {
+            const params = new URLSearchParams();
+
+            const search = document.querySelector('[name="search"]');
+            if (search && search.value) params.set('search', search.value);
+
+            const platform = document.querySelector('[name="platform"]');
+            if (platform && platform.value) params.set('platform', platform.value);
+
+            const account = document.querySelector('[name="account"]');
+            if (account && account.value) params.set('account', account.value);
+
+            const status = document.querySelector('[name="status"]');
+            if (status && status.value) params.set('status', status.value);
+
+            const sort = document.querySelector('[name="sort"]');
+            if (sort && sort.value) params.set('sort', sort.value);
+
+            const gfnOnly = document.querySelector('[name="gfn_only"]');
+            if (gfnOnly && gfnOnly.checked) params.set('gfn_only', 'true');
+
+            return params;
+        }
+
         document.body.addEventListener('htmx:configRequest', function(evt) {
             const target = evt.detail.target;
             if (!target || target.id !== 'games-container') return;
 
-            // evt.detail.path is the configured URL for the request, e.g.
-            // "/games" (filters via hx-include/parameters) or
-            // "/games?view=grid" (Grid/List buttons, hardcoded in the URL).
-            // Handle both: start from any query string already in path,
-            // then layer in form parameters (search/platform/etc).
-            const [routePath, existingQuery] = evt.detail.path.split('?');
+            const [routePath] = evt.detail.path.split('?');
             if (routePath !== '/games') return;
 
-            const params = new URLSearchParams(existingQuery || '');
-            for (const [key, value] of Object.entries(evt.detail.parameters || {})) {
-                if (value !== '' && value !== null && value !== undefined) {
-                    params.set(key, value);
-                }
-            }
+            // The Grid/List buttons hardcode view=grid / view=list directly
+            // in their hx-get URL rather than via a named form field, so
+            // pick that up from the path's own query string if present.
+            const existingQuery = evt.detail.path.split('?')[1] || '';
+            const viewMatch = new URLSearchParams(existingQuery).get('view');
+
+            const params = getCurrentFilterParams();
+            if (viewMatch) params.set('view', viewMatch);
 
             const query = params.toString();
             const newUrl = '/' + (query ? '?' + query : '');
