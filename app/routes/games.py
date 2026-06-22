@@ -248,8 +248,17 @@ def toggle_gfn(game_id):
 @games_bp.route("/game/<int:game_id>/refresh-igdb", methods=["POST"])
 def refresh_igdb(game_id):
     """Refresh a single game's IGDB details (manual update from modal)."""
-    from scripts.fetch_igdb_metadata import IGDBMetadataFetcher
+    import os
+    import sys
     from datetime import datetime
+    
+    # Add parent directory to path for imports
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    try:
+        from scripts.fetch_igdb_metadata import IGDBClient, GameMatcher
+    except ImportError as e:
+        return f'<span class="text-red-400 text-xs">⚠️ Import error: {str(e)}</span>'
     
     game = db.session.query(GameMaster).filter(
         GameMaster.game_id == game_id
@@ -258,77 +267,136 @@ def refresh_igdb(game_id):
     if not game:
         return '<span class="text-red-400 text-xs">Game not found</span>', 404
 
-    # If no IGDB ID yet, search by title first
+    # IMPORTANT: Do NOT use IGDBMetadataFetcher here — its __init__ calls
+    # create_app() and pushes a second Flask app context, which breaks
+    # inside an already-running request (causes a silent 500 that htmx
+    # swallows). Use the low-level IGDBClient directly instead, reusing
+    # the credentials from the CURRENT app's config/env.
+    client_id = os.environ.get("IGDB_CLIENT_ID")
+    client_secret = os.environ.get("IGDB_ACCESS_TOKEN")  # This is actually the Client Secret
+
+    if not client_id or not client_secret:
+        return '<span class="text-red-400 text-xs">⚠️ IGDB_CLIENT_ID / IGDB_ACCESS_TOKEN not set in environment</span>'
+
+    try:
+        igdb = IGDBClient(client_id, client_secret)
+        matcher = GameMatcher()
+    except Exception as e:
+        return f'<span class="text-red-400 text-xs">⚠️ IGDB init error: {str(e)}</span>'
+
+    # If no IGDB ID yet, search by title with fuzzy matching (like admin panel does)
     if not game.igdb_id:
         try:
-            fetcher = IGDBMetadataFetcher()
-            results = fetcher.search_games(game.title, limit=1)
-            if results:
-                game.igdb_id = results[0]["id"]
-            else:
-                return '<span class="text-yellow-400 text-xs">⚠️ No IGDB match found for: ' + game.title + '</span>'
+            # Search with limit=5 to get multiple results for fuzzy matching
+            results = igdb.search_games(game.title, limit=5)
+            
+            if not results:
+                return f'<span class="text-yellow-400 text-xs">⚠️ No IGDB results found for: {game.title}</span>'
+            
+            # Use fuzzy matching to find best match (same as admin panel)
+            best_match = matcher.find_best_match(game.title, results, threshold=0.7)
+            
+            if not best_match:
+                return f'<span class="text-yellow-400 text-xs">⚠️ No close match in IGDB for: {game.title}<br><small>Tried: {", ".join([r.get("name", "?") for r in results[:3]])}</small></span>'
+            
+            game.igdb_id = best_match.get("id")
+            if not game.igdb_id:
+                return '<span class="text-yellow-400 text-xs">⚠️ No valid IGDB ID in search results</span>'
+            
         except Exception as e:
             return f'<span class="text-red-400 text-xs">⚠️ Error searching IGDB: {str(e)}</span>'
 
     # Fetch details from IGDB by ID
     try:
-        fetcher = IGDBMetadataFetcher()
-        igdb_game = fetcher.get_game_by_igdb_id(game.igdb_id)
+        igdb_game = igdb.get_game_by_igdb_id(game.igdb_id)
         
         if not igdb_game:
-            return '<span class="text-yellow-400 text-xs">⚠️ Game not found on IGDB</span>'
+            return f'<span class="text-yellow-400 text-xs">⚠️ Game ID {game.igdb_id} not found on IGDB</span>'
 
-        # Update game with fresh data
-        game.title = igdb_game.get("name", game.title)
+        # Update game with fresh data (same parsing as admin panel)
+        if igdb_game.get("name"):
+            game.title = igdb_game.get("name")
         
         # Cover art
-        if igdb_game.get("cover"):
-            cover_id = igdb_game["cover"].get("url", "").split("/")[-1].split(".")[0]
+        cover_data = igdb_game.get("cover")
+        if cover_data:
+            cover_id = cover_data.get("url") if isinstance(cover_data, dict) else cover_data
             if cover_id:
-                game.cover_url = f"https://images.igdb.com/igdb/image/upload/t_1080p/{cover_id}.jpg"
+                # IGDB returns paths like: //images.igdb.com/igdb/image/upload/t_cover_big/co2tgb.jpg
+                if isinstance(cover_id, str):
+                    if cover_id.startswith("//"):
+                        game.cover_url = f"https:{cover_id}".replace("t_thumb", "t_1080p").replace("t_cover_big", "t_1080p")
+                    elif cover_id.startswith("http"):
+                        game.cover_url = cover_id.replace("t_thumb", "t_1080p").replace("t_cover_big", "t_1080p")
+                    else:
+                        game.cover_url = f"https://images.igdb.com/igdb/image/upload/t_1080p/{cover_id}.jpg"
 
         # Ratings
-        game.rating = igdb_game.get("rating")
-        game.total_rating = igdb_game.get("total_rating")
-        game.total_rating_count = igdb_game.get("total_rating_count")
+        if igdb_game.get("rating") is not None:
+            game.rating = float(igdb_game.get("rating"))
+        if igdb_game.get("total_rating") is not None:
+            game.total_rating = float(igdb_game.get("total_rating"))
+        if igdb_game.get("total_rating_count") is not None:
+            game.total_rating_count = int(igdb_game.get("total_rating_count"))
 
-        # Release date
+        # Release date (IGDB returns Unix timestamp)
         first_release = igdb_game.get("first_release_date")
         if first_release:
-            game.first_release_date = datetime.fromtimestamp(first_release)
+            try:
+                game.first_release_date = datetime.fromtimestamp(int(first_release))
+            except (ValueError, TypeError):
+                pass
 
         # Summary
-        game.summary = igdb_game.get("summary")
+        if igdb_game.get("summary"):
+            game.summary = igdb_game.get("summary")
 
         # Genres, themes, game modes
-        if igdb_game.get("genres"):
-            game.genres = ", ".join([g.get("name", "") for g in igdb_game["genres"]])
-        if igdb_game.get("themes"):
-            game.themes = ", ".join([t.get("name", "") for t in igdb_game["themes"]])
-        if igdb_game.get("game_modes"):
-            game.game_modes = ", ".join([m.get("name", "") for m in igdb_game["game_modes"]])
+        genres = igdb_game.get("genres", [])
+        if isinstance(genres, list):
+            game.genres = ", ".join([g.get("name", "") for g in genres if isinstance(g, dict)])
+        
+        themes = igdb_game.get("themes", [])
+        if isinstance(themes, list):
+            game.themes = ", ".join([t.get("name", "") for t in themes if isinstance(t, dict)])
+        
+        game_modes = igdb_game.get("game_modes", [])
+        if isinstance(game_modes, list):
+            game.game_modes = ", ".join([m.get("name", "") for m in game_modes if isinstance(m, dict)])
 
-        # Developers & Publishers
-        devs, pubs = [], []
-        for ic in igdb_game.get("involved_companies", []):
-            name = ic.get("company", {}).get("name", "")
-            if ic.get("developer"):
-                devs.append(name)
-            if ic.get("publisher"):
-                pubs.append(name)
-        if devs:
-            game.developers = ", ".join(devs)
-        if pubs:
-            game.publishers = ", ".join(pubs)
+        # Developers & Publishers (same logic as admin panel)
+        developers_list = []
+        publishers_list = []
+        involved_companies = igdb_game.get("involved_companies", [])
+        
+        if isinstance(involved_companies, list):
+            for ic in involved_companies:
+                if not isinstance(ic, dict):
+                    continue
+                company = ic.get("company", {})
+                company_name = company.get("name", "") if isinstance(company, dict) else ""
+                if company_name:
+                    if ic.get("developer"):
+                        developers_list.append(company_name)
+                    if ic.get("publisher"):
+                        publishers_list.append(company_name)
+        
+        if developers_list:
+            game.developers = ", ".join(list(dict.fromkeys(developers_list)))  # Remove duplicates
+        if publishers_list:
+            game.publishers = ", ".join(list(dict.fromkeys(publishers_list)))  # Remove duplicates
 
         db.session.commit()
 
+        # Re-fetch the updated game and render modal
+        game = db.session.query(GameMaster).filter(GameMaster.game_id == game_id).first()
+        gfn = db.session.query(GfnGame).filter_by(game_id=game_id).first()
+        
         return render_template(
             "_game_detail.html",
             game=game,
-            is_on_gfn=db.session.query(GfnGame).filter_by(game_id=game_id).first() is not None,
-            gfn_url=db.session.query(GfnGame).filter_by(game_id=game_id).first().gfn_url 
-                    if db.session.query(GfnGame).filter_by(game_id=game_id).first() else None,
+            is_on_gfn=gfn is not None,
+            gfn_url=gfn.gfn_url if gfn else None,
             platforms=db.session.execute(
                 db.text("""
                     SELECT DISTINCT platform_name, account_username
@@ -341,6 +409,9 @@ def refresh_igdb(game_id):
         )
 
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[ERROR] refresh_igdb failed: {error_trace}")
         return f'<span class="text-red-400 text-xs">⚠️ Error: {str(e)}</span>'
 
 
