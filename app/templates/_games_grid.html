@@ -30,10 +30,15 @@
                         <span class="text-gray-400">{{ game.platform_name }}</span>
                     {% endif %}
                 </div>
+
+                <!-- Favourite Star -->
+                <div class="absolute top-2 left-2 w-8 h-8 rounded-full backdrop-blur-md bg-gray-900/70 border border-cyan-400/30 flex items-center justify-center">
+                    {% include "_favourite_toggle.html" %}
+                </div>
                 
                 <!-- GFN Badge -->
                 {% if game.is_on_gfn %}
-                <div class="absolute top-2 left-2 px-2 py-1 rounded-full text-xs font-bold bg-green-500/80 text-white backdrop-blur-md">
+                <div class="absolute top-12 left-2 px-2 py-1 rounded-full text-xs font-bold bg-green-500/80 text-white backdrop-blur-md">
                     ☁️ GFN
                 </div>
                 {% endif %}

@@ -1,0 +1,8 @@
+<span id="favourite-toggle-{{ game.game_id }}" class="inline-flex items-center gap-2">
+    <button
+        type="button"
+        title="{% if game.is_favourite %}Remove from favourites{% else %}Add to favourites{% endif %}"
+        onclick="event.stopPropagation(); htmx.ajax('POST', '/game/{{ game.game_id }}/favourite', {target: '#favourite-toggle-{{ game.game_id }}', swap: 'outerHTML'})"
+        class="text-lg leading-none transition-transform hover:scale-110 {% if game.is_favourite %}text-yellow-400{% else %}text-gray-500 hover:text-yellow-300{% endif %}"
+    >{% if game.is_favourite %}★{% else %}☆{% endif %}</button>
+</span>

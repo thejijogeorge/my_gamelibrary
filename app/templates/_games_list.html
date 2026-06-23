@@ -2,6 +2,7 @@
     <table class="w-full text-sm">
         <thead>
             <tr class="border-b border-cyan-500/20 bg-gradient-to-r from-gray-800/50 to-gray-900/50">
+                <th class="px-4 py-4 text-center font-semibold text-yellow-400">★</th>
                 <th class="px-6 py-4 text-left font-semibold text-cyan-400">Game Title</th>
                 <th class="px-6 py-4 text-left font-semibold text-purple-400">Platform</th>
                 <th class="px-6 py-4 text-left font-semibold text-blue-400">Account</th>
@@ -15,6 +16,9 @@
             {% if games %}
                 {% for game in games %}
                 <tr class="border-b border-cyan-500/10 hover:bg-cyan-500/10 transition-colors">
+                    <td class="px-4 py-4 text-center">
+                        {% include "_favourite_toggle.html" %}
+                    </td>
                     <td class="px-6 py-4 font-medium text-gray-100">
                         <div class="flex items-start gap-3">
                             {% if game.cover_url %}
@@ -87,7 +91,7 @@
                 {% endfor %}
             {% else %}
                 <tr>
-                    <td colspan="7" class="px-6 py-12 text-center text-gray-400">
+                    <td colspan="8" class="px-6 py-12 text-center text-gray-400">
                         <p class="text-2xl mb-2">🎮</p>
                         <p>No games found matching your filters.</p>
                     </td>
