@@ -13,6 +13,7 @@ VALID_SORTS = {
     "rating": "total_rating DESC NULLS LAST",
     "release": "first_release_date DESC NULLS LAST",
     "status": "status",
+    "favourite": "is_favourite DESC",
 }
 
 
@@ -26,6 +27,7 @@ def get_filter_params():
         "gfn_only": request.args.get("gfn_only", "").lower() == "true",
         "status": request.args.get("status", "").strip(),
         "sort": request.args.get("sort", "title").strip(),
+        "favourite_only": request.args.get("favourite_only", "").lower() == "true",
     }
 
 
@@ -53,6 +55,7 @@ def index():
         gfn_only=params["gfn_only"],
         status_filter=params["status"],
         sort=params["sort"],
+        favourite_only=params["favourite_only"],
         platforms=platforms,
         accounts=accounts,
     )
@@ -86,6 +89,9 @@ def get_games():
         conditions.append("status = :status")
         bind_params["status"] = params["status"]
 
+    if params["favourite_only"]:
+        conditions.append("is_favourite = true")
+
     where_clause = " AND ".join(conditions)
     order = VALID_SORTS.get(params["sort"], "title")
 
@@ -94,7 +100,7 @@ def get_games():
             game_id, title, cover_url, platform_name,
             account_username, platform_specific_id,
             playtime_minutes, last_played, is_on_gfn,
-            gfn_deeplink_url, total_rating, status
+            gfn_deeplink_url, total_rating, status, is_favourite
         FROM vw_owned_games_unified
         WHERE {where_clause}
         ORDER BY {order}, title
@@ -117,6 +123,7 @@ def get_games():
             "gfn_deeplink_url": g[9],
             "total_rating": g[10],
             "status": g[11] or "Not Started",
+            "is_favourite": g[12] or False,
         }
         for g in games
     ]
@@ -204,6 +211,25 @@ def update_status(game_id):
     c = colors.get(new_status, "gray")
 
     return f'<span class="px-3 py-1 rounded-full text-xs font-bold bg-{c}-500/20 text-{c}-400 border border-{c}-500/30">{new_status}</span>'
+
+
+@games_bp.route("/game/<int:game_id>/favourite", methods=["POST"])
+def toggle_favourite(game_id):
+    """Toggle favourite status for a game (htmx)."""
+    game = db.session.query(GameMaster).filter(
+        GameMaster.game_id == game_id
+    ).first()
+
+    if not game:
+        return '<span class="text-red-400 text-xs">Game not found</span>', 404
+
+    game.is_favourite = not game.is_favourite
+    db.session.commit()
+
+    return render_template(
+        "_favourite_toggle.html",
+        game=game,
+    )
 
 
 @games_bp.route("/game/<int:game_id>/gfn-toggle", methods=["POST"])
