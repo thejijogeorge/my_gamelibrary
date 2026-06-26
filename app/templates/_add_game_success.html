@@ -1,0 +1,22 @@
+<div id="add-game-wizard">
+    <div class="p-6 text-center">
+        <div class="text-4xl mb-3">&#10004;</div>
+        <p class="text-green-400 font-semibold mb-2">Game added!</p>
+        <p class="text-sm text-gray-300 mb-1">{{ title }}</p>
+        <p class="text-xs text-gray-500 mb-4">{{ summary }}</p>
+        <button type="button"
+            hx-get="/admin/add-game-form" hx-target="#add-game-wizard" hx-swap="outerHTML"
+            class="px-6 py-2 rounded-lg text-sm font-semibold bg-cyan-600 hover:bg-cyan-500 text-white transition">
+            Add Another Game
+        </button>
+    </div>
+    <script>
+        try {
+            var p = new URLSearchParams(window.location.search);
+            htmx.ajax('GET', '/games?' + p.toString(), {target:'#games-container', swap:'innerHTML'});
+            fetch('/api/stats').then(function(r){return r.ok?r.json():null}).then(function(d){
+                if(d){var e=document.getElementById('stats');if(e)e.innerHTML='<p class="text-cyan-400 font-semibold">'+d.total_games+' games</p><p class="text-green-400 text-xs">'+d.gfn_available+' on GeForce NOW</p>';}
+            }).catch(function(){});
+        } catch(e) {}
+    </script>
+</div>

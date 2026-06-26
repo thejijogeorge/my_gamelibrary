@@ -1,0 +1,46 @@
+<div id="add-game-wizard">
+    <h3 class="text-sm font-bold text-cyan-400 mb-3">Step 1: Choose Game & Storefronts</h3>
+
+    <!-- IGDB Search -->
+    <div class="mb-4">
+        <label class="block text-xs font-semibold text-gray-300 mb-1">Game Name</label>
+        <input
+            type="text"
+            id="igdb-search-input"
+            placeholder="Start typing to search IGDB..."
+            autocomplete="off"
+            hx-get="/admin/igdb-search"
+            hx-target="#igdb-results"
+            hx-trigger="keyup changed delay:350ms"
+            name="title"
+            class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-cyan-500/20 text-white placeholder-gray-500 focus:border-cyan-400 focus:outline-none text-sm"
+        />
+        <p class="text-xs text-gray-500 mt-1">Pick a result to auto-fill, or just type the name manually.</p>
+        <div id="igdb-results" class="mt-2 space-y-1 max-h-48 overflow-y-auto"></div>
+    </div>
+
+    <!-- Step 2 form: posted via htmx -->
+    <form hx-post="/admin/add-game-step2" hx-target="#add-game-wizard" hx-swap="outerHTML">
+        <input type="hidden" name="title" id="add-game-title-hidden" value="" />
+        <input type="hidden" name="igdb_id" id="add-game-igdb-hidden" value="" />
+
+        <!-- Storefronts -->
+        <div class="mb-4">
+            <label class="block text-xs font-semibold text-gray-300 mb-2">Storefronts (select all that apply)</label>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {% for storefront in storefronts %}
+                <label class="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900 border border-cyan-500/20 cursor-pointer hover:border-cyan-400/50 transition text-sm">
+                    <input type="checkbox" name="storefronts" value="{{ storefront }}"
+                        class="w-4 h-4 rounded border-cyan-500/50 bg-gray-800 text-cyan-500 focus:ring-cyan-500/50 cursor-pointer" />
+                    <span class="text-gray-200">{{ storefront }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <button type="submit"
+            class="w-full px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white transition">
+            Next &rarr;
+        </button>
+    </form>
+</div>

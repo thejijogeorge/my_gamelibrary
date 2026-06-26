@@ -32,7 +32,7 @@
             opacity: 0;
         }
         .admin-panel.open {
-            max-height: 800px;
+            max-height: 1600px;
             opacity: 1;
         }
     </style>
@@ -143,7 +143,7 @@
                     <h3 class="text-sm font-bold text-green-400 mb-1">🎯 Assign GFN Deep Link</h3>
                     <p class="text-xs text-gray-400 mb-3">
                         Search for a game, then paste its GFN UUID to enable direct launching.
-                        Find UUIDs at <a href="https://play.geforcenow.com" target="_blank" class="text-cyan-400 underline">play.geforcenow.com</a> — click a game and copy the <code class="text-cyan-300">game-id</code> from the URL.
+                        Find UUIDs at <a href="https://play.geforcenow.com" target="_blank" class="text-cyan-400 underline">play.geforcenow.com</a> - click a game and copy the <code class="text-cyan-300">game-id</code> from the URL.
                     </p>
                     <input 
                         type="text" 
@@ -156,6 +156,18 @@
                     />
                     <div id="gfn-search-results" class="mt-3 space-y-2 max-h-64 overflow-y-auto"></div>
                     <div id="gfn-status" class="mt-3"></div>
+                </div>
+
+                <!-- Add Game Manually -->
+                <div 
+                    class="mt-6 p-4 rounded-lg bg-gray-800/50 border border-cyan-500/10"
+                    hx-get="/admin/add-game-form"
+                    hx-trigger="load"
+                    hx-target="this"
+                    hx-swap="innerHTML"
+                >
+                    <h3 class="text-sm font-bold text-cyan-400 mb-1">➕ Add Game</h3>
+                    <p class="text-xs text-gray-400 mb-3">Loading form...</p>
                 </div>
             </div>
         </div>
@@ -296,7 +308,7 @@
                 <!-- View Toggle -->
                 <div>
                     <label class="block text-sm font-semibold text-gray-300 mb-2 invisible">View</label>
-                    <div class="flex h-[42px] space-x-2">
+                    <div class="flex space-x-2">
                         <button 
                             hx-get="/games?view=grid"
                             hx-target="#games-container"
@@ -362,18 +374,23 @@
 
     <!-- Load stats on page load -->
     <script>
-        fetch('/api/stats')
-            .then(r => r.json())
-            .then(data => {
-                document.getElementById('stats').innerHTML = `
-                    <p class="text-cyan-400 font-semibold">${data.total_games} games</p>
-                    <p class="text-green-400 text-xs">${data.gfn_available} on GeForce NOW</p>
-                `;
-            });
+        /* === Stats === */
+        function refreshStats() {
+            fetch('/api/stats')
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(data) {
+                    if (!data) return;
+                    var el = document.getElementById('stats');
+                    if (el) {
+                        el.innerHTML = '<p class="text-cyan-400 font-semibold">' + data.total_games + ' games</p>' +
+                            '<p class="text-green-400 text-xs">' + data.gfn_available + ' on GeForce NOW</p>';
+                    }
+                })
+                .catch(function() {});
+        }
+        refreshStats();
 
-        /**
-         * Launch a game on GeForce NOW via browser deep link.
-         */
+        /* === GFN Launch === */
         function launchGFN(url) {
             if (!url) {
                 window.open('https://play.geforcenow.com/mall/#/layout/games', '_blank');
@@ -382,137 +399,79 @@
             window.open(url, '_blank');
         }
 
-        /**
-         * Open game detail modal — loads content via htmx.
-         */
+        /* === Game Modal === */
         function openGameModal(gameId) {
-            const modal = document.getElementById('game-modal');
-            const content = document.getElementById('game-modal-content');
+            var modal = document.getElementById('game-modal');
+            var content = document.getElementById('game-modal-content');
             content.innerHTML = '<div class="flex items-center justify-center py-12 text-gray-500">Loading game details...</div>';
             modal.classList.remove('hidden');
             document.body.style.overflow = 'hidden';
-            
-            // Fetch game details via htmx
             htmx.ajax('GET', '/game/' + gameId, {target: '#game-modal-content', swap: 'innerHTML'});
         }
 
-        /**
-         * Keep the address bar in sync with the current filters WITHOUT
-         * using hx-push-url.
-         *
-         * Why not hx-push-url: filter controls fetch from /games?... (the
-         * partial-HTML endpoint). hx-push-url="true" pushes that exact
-         * fetched URL into history. If the user then hits refresh (or
-         * shares/bookmarks the link), the browser does a full page load
-         * of /games?... directly — which returns only the bare grid/list
-         * fragment with no <html>/<head>/Tailwind/htmx, breaking all
-         * styling and structure.
-         *
-         * Instead, we let htmx fetch /games?... as normal, but manually
-         * push "/?..." — same filters, pointed at the real page route —
-         * into history ourselves. A refresh then correctly hits "/",
-         * which renders the full page shell and re-fetches the fragment
-         * with the same filters intact.
-         *
-         * We read filter values straight from the DOM (getCurrentFilterParams)
-         * rather than from htmx's evt.detail.parameters — in testing that
-         * sometimes handed back an array for a field (e.g. status as
-         * ["", "Not Started"]), which silently coerces to a comma-joined
-         * string like ",Not Started" when passed to URLSearchParams.set().
-         * Reading the inputs directly sidesteps htmx's internal
-         * serialization entirely and always matches what's on screen.
-         */
+        /* === Filter params from DOM === */
         function getCurrentFilterParams() {
-            const params = new URLSearchParams();
-
-            const search = document.querySelector('[name="search"]');
+            var params = new URLSearchParams();
+            var search = document.querySelector('[name="search"]');
             if (search && search.value) params.set('search', search.value);
-
-            const platform = document.querySelector('[name="platform"]');
+            var platform = document.querySelector('[name="platform"]');
             if (platform && platform.value) params.set('platform', platform.value);
-
-            const account = document.querySelector('[name="account"]');
+            var account = document.querySelector('[name="account"]');
             if (account && account.value) params.set('account', account.value);
-
-            const status = document.querySelector('[name="status"]');
+            var status = document.querySelector('[name="status"]');
             if (status && status.value) params.set('status', status.value);
-
-            const sort = document.querySelector('[name="sort"]');
+            var sort = document.querySelector('[name="sort"]');
             if (sort && sort.value) params.set('sort', sort.value);
-
-            const gfnOnly = document.querySelector('[name="gfn_only"]');
+            var gfnOnly = document.querySelector('[name="gfn_only"]');
             if (gfnOnly && gfnOnly.checked) params.set('gfn_only', 'true');
-
-            const favouriteOnly = document.querySelector('[name="favourite_only"]');
+            var favouriteOnly = document.querySelector('[name="favourite_only"]');
             if (favouriteOnly && favouriteOnly.checked) params.set('favourite_only', 'true');
-
             return params;
         }
 
+        /* === URL sync: push /? instead of /games? === */
         document.body.addEventListener('htmx:configRequest', function(evt) {
-            const target = evt.detail.target;
+            var target = evt.detail.target;
             if (!target || target.id !== 'games-container') return;
-
-            const [routePath] = evt.detail.path.split('?');
-            if (routePath !== '/games') return;
-
-            // The Grid/List buttons hardcode view=grid / view=list directly
-            // in their hx-get URL rather than via a named form field, so
-            // pick that up from the path's own query string if present.
-            const existingQuery = evt.detail.path.split('?')[1] || '';
-            const viewMatch = new URLSearchParams(existingQuery).get('view');
-
-            const params = getCurrentFilterParams();
+            var pathParts = evt.detail.path.split('?');
+            if (pathParts[0] !== '/games') return;
+            var existingQuery = pathParts[1] || '';
+            var viewMatch = new URLSearchParams(existingQuery).get('view');
+            var params = getCurrentFilterParams();
             if (viewMatch) params.set('view', viewMatch);
-
-            const query = params.toString();
-            const newUrl = '/' + (query ? '?' + query : '');
+            var query = params.toString();
+            var newUrl = '/' + (query ? '?' + query : '');
             history.pushState({}, '', newUrl);
         });
 
-        /**
-         * Close game detail modal.
-         * Also refreshes the games grid behind it, since actions taken
-         * inside the modal (status change, GFN toggle, delete, IGDB
-         * refresh) update the database but don't touch the grid markup
-         * directly — without this, those changes only appeared after a
-         * manual page reload.
-         *
-         * We rebuild the request from the CURRENT browser URL (kept in
-         * sync via the htmx:configRequest handler above, which pushes
-         * "/?..." on every filter change) rather than relying on the
-         * games-container's original hx-get attribute, which would
-         * otherwise reset filters back to whatever they were on the
-         * last full page load.
-         */
+        /* === Close modal + refresh grid === */
         function closeModal() {
             document.getElementById('game-modal').classList.add('hidden');
             document.body.style.overflow = '';
+            refreshGamesGrid();
+        }
 
-            const params = new URLSearchParams(window.location.search);
+        function refreshGamesGrid() {
+            var params = new URLSearchParams(window.location.search);
             htmx.ajax('GET', '/games?' + params.toString(), {
                 target: '#games-container',
                 swap: 'innerHTML'
             });
         }
 
-        // Close modal on Escape key
+        /* === Escape key closes modal === */
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') closeModal();
         });
 
-        // Surface htmx errors instead of failing silently.
-        // Without this, a 500/404 response just gets swallowed by htmx
-        // and buttons appear to "do nothing" with no feedback.
+        /* === Show htmx errors visibly === */
         document.body.addEventListener('htmx:responseError', function(evt) {
-            const status = evt.detail.xhr.status;
-            const body = evt.detail.xhr.responseText || '(no response body)';
-            console.error('htmx request failed:', status, body);
-            alert('Request failed (' + status + '). Check the browser console or server logs for details.');
+            var status = evt.detail.xhr.status;
+            console.error('htmx error:', status);
+            alert('Request failed (' + status + ').');
         });
-        document.body.addEventListener('htmx:sendError', function(evt) {
-            console.error('htmx network error:', evt.detail);
-            alert('Network error — could not reach the server.');
+        document.body.addEventListener('htmx:sendError', function() {
+            alert('Network error - could not reach the server.');
         });
     </script>
 </body>
