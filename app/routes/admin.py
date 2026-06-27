@@ -469,6 +469,7 @@ def igdb_search():
             f"document.getElementById('add-game-igdb-hidden').value='{igdb_id}';"
             f"document.getElementById('igdb-search-input').value={name_js};"
             f"document.getElementById('igdb-results').innerHTML='';"
+            f"if(window.checkStep1Valid){{checkStep1Valid();}}"
         )
 
         html += f"""
